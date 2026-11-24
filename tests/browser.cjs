@@ -152,18 +152,8 @@ async function exercise(browser,touch){
         if(bytes instanceof Uint32Array&&bytes.length===1){bytes[0]=51;return bytes}
         return fill.call(this,bytes);
       };
-      window.fx=[];
-      const source=window.AudioBufferSourceNode?.prototype;
-      if(source){
-        const start=source.start;
-        source.start=function(...args){window.fx.push(this.buffer?.duration);return start.apply(this,args)};
-      }
-      const play=HTMLMediaElement.prototype.play;
-      HTMLMediaElement.prototype.play=function(...args){
-        if(this.src.endsWith(".wav"))window.fx.push(this.src);
-        return play.apply(this,args);
-      };
     });
+    await page.addInitScript(require("./record-sounds.cjs"));
     await page.goto(url);await page.waitForFunction(()=>document.querySelector("#status").textContent.startsWith("Player 1"));
     assert(!requests.some(([,u])=>u.includes("/audio/")),"Audio downloaded before first interaction");
     if(!touch){await pixelParity(page);await projectileParity(page)}
@@ -196,8 +186,7 @@ async function exercise(browser,touch){
       await click("#reset");
     }
     await tap(405,493);await status("Shot in flight");await status("Player 2");assert.notDeepEqual(await pixel(),initial);
-    await page.waitForFunction(()=>window.fx.length>=2);
-    assert((await page.evaluate(()=>window.fx)).every(v=>typeof v==="number"?v>0:/\/(cannon|expmedium2|expmedium)\.wav$/.test(v)));
+    await page.waitForFunction(()=>played.includes("cannon.wav")&&played.includes("expmedium2.wav"));
     await tap(405,493);await status("Player 1");await click("#reset");assert.deepEqual(await pixel(),initial);
     await tap(248,490);await status("Moving");await status("Player 1");
     for(const [name,id] of [["3 Shot","#three"],["5 Shot","#five"],["Flash Blast","#weapon-9"]]){

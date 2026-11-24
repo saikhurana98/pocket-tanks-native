@@ -1,4 +1,5 @@
 const width=800,height=450,interval=1/30;
+const rockInterval=.774;
 
 // Each bound in 0x447a90 follows empty cells down to earth, then follows
 // solid cells upward to the empty cell immediately above that layer.
@@ -22,7 +23,24 @@ export function queueDirtBounds(s,left,upper,right,lower){
 }
 export function advanceDirt(s,dt){
   s.dirtAge+=dt;
-  if(s.dirtAge<=interval)return;
+  if(s.dirtAge>interval){
+    s.dirtFalling=s.dirt.size>0;
+    dropColumns(s);
+  }
+  // 0x448046 retains the last column scan's activity between 30 Hz updates.
+  if(!s.dirtFalling){
+    s.rockTime=rockInterval;
+    s.rockIndex=5;
+    return;
+  }
+  s.rockTime+=dt;
+  if(s.rockTime>=rockInterval){
+    s.rockTime-=rockInterval;
+    s.rockIndex=(s.rockIndex+1)%6;
+    s.onSound?.("rocks_"+(s.rockIndex+1)+".wav");
+  }
+}
+function dropColumns(s){
   s.dirtAge-=interval;
   const changes=[];
   for(const [x,bounds] of s.dirt){

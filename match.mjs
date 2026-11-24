@@ -25,6 +25,8 @@ export function deal(state,catalog){
 }
 export function openShop(state){
   state.pool=deal(state,catalog);
+  state.autoDraft=false;
+  state.draftTime=0;
   state.draft=[[],[]];
   state.ammo=state.tanks.map(()=>weapons.map(()=>0));
 }
@@ -41,11 +43,16 @@ export function pickWeapon(state,slot){
   }
   return true;
 }
-export function randomDraft(state){
-  while(state.pool){
-    const remaining=state.pool.flatMap((w,i)=>w===null?[]:[i]);
-    pickWeapon(state,remaining[roll(state,remaining.length)]);
-  }
+export function advanceDraft(state,seconds){
+  if(!state.pool||!state.autoDraft)return false;
+  state.draftTime+=seconds;
+  if(state.draftTime<.1)return false;
+  state.draftTime-=.1;
+  const remaining=state.pool.flatMap((w,i)=>w===null?[]:[i]);
+  pickWeapon(state,remaining[roll(state,remaining.length)]);
+  state.onSound?.("pickweap.wav");
+  if(!state.pool)state.autoDraft=false;
+  return true;
 }
 const hull=[[4,-10],[11,-4],[11,-1],[3,2],[-3,2],[-11,-1],[-11,-4],[-5,-10]];
 const barrel=[[2,-12],[2,0],[-2,0],[-2,-12]];

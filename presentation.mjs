@@ -4,7 +4,7 @@ import {cutterStripes,rasterLine} from "./cutter.mjs";
 import sprites from "./art/animated-shells.json" with {type:"json"};
 import widths from "./art/arsenal.json" with {type:"json"};
 import {weapons,volleys} from "./match.mjs";
-const pngs=["tracer-labels","animated-shells","match","big-blast","shop","match-range","arsenal","three-blast","five-blast"];
+const pngs=["tracer-labels","animated-shells","match","big-blast","shop","random","match-range","arsenal","three-blast","five-blast"];
 const sources = ["range","sky","aim","arrows","angle","power","bar","controls","blast","hulls","barrels","end","weapon","second",...pngs];
 export async function loadArt() {
   const images = await Promise.all(sources.map(async name => {
@@ -196,7 +196,10 @@ export class RangeDisplay {
     c.drawImage(this.art.match,275,90,55,31,active?565:177,190,55,31);
     c.save();if(active){c.translate(800,0);c.scale(-1,1)}
     c.drawImage(this.art.match,275,121,55,64,177,221,55,64);c.restore();
-    if(ui.pointer)this.cursor(ui.pointer,!!ui.hover,false);
+    if(!s.autoDraft&&ui.hover==="random"){
+      c.drawImage(this.art.random,0,ui.pressed==="random"?54:27,85,27,362,410,85,27);
+    }
+    if(ui.pointer)this.cursor(ui.pointer,!!ui.hover,s.autoDraft);
   }
   draw(s,ui,t){
     const c=this.ctx;

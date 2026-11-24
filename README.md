@@ -4,6 +4,8 @@
 
 Two people can play ten volleys on the same device. Pick weapons in the shop, or use Random to deal the remaining choices. Each player has ten rounds and four moves. The shop uses the PC game's deal routine to fill twenty positions from the playable roster. A weapon can appear more than once. The score counts hits on the opponent, deducts self-hits and stops at zero. After the final volley, choose Play Again to draft a fresh arsenal. Target Practice has unlimited ammunition for each playable weapon. Each mode uses a different range captured from the Windows game.
 
+[Read the frame and sound audit](PRESENTATION.md) or [step through Single Shot](https://saikhurana98.github.io/pocket-tanks-native/tests/frame-review.html).
+
 ## Base Deluxe coverage
 
 The Original and Deluxe packs in this installation contain 30 weapons each. Of those 60, 39 have playable native programs. The other 260 weapons in this installation come from expansion packs.

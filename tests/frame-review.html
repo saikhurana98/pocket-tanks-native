@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <base href="../"><title>Single Shot frame comparison</title>
+  <style>
+    :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#131416;color:#f4f4f4}
+    body{margin:2rem auto;max-width:56rem;padding:0 1rem}h1{font-size:1.6rem}p{line-height:1.5}
+    section{display:flex;gap:1rem}figure{margin:0;flex:1;min-width:0}canvas{width:100%;image-rendering:pixelated;background:#000}
+    input{width:100%}button{padding:.4rem .7rem;margin:.4rem .3rem .4rem 0}output{font-variant-numeric:tabular-nums}a{color:#a5d8ff}
+  </style>
+</head>
+<body>
+  <h1>Single Shot frame comparison</h1>
+  <p>Each crop follows the projectile or impact across 60 × 60 game pixels. Yellow marks pixels that differ at the recorded physics counters.</p>
+  <section>
+    <figure><canvas id="pc" width="60" height="60"></canvas><figcaption>PC capture</figcaption></figure>
+    <figure><canvas id="web" width="60" height="60"></canvas><figcaption>Native replay</figcaption></figure>
+    <figure><canvas id="mask" width="60" height="60"></canvas><figcaption>Pixel differences</figcaption></figure>
+  </section>
+  <p><label for="frame">Captured frame</label> <output id="number" for="frame"></output>
+  <input id="frame" type="range" min="1" value="1" max="1" disabled></p>
+  <button id="previous" disabled>Previous frame</button><button id="next" disabled>Next frame</button>
+  <p id="detail" role="status">Loading original frames and native replay…</p>
+  <script type="module">
+    import {replayFilm} from "./tests/shot-film.mjs";
+    const slider=document.querySelector("#frame"),previous=document.querySelector("#previous"),next=document.querySelector("#next"),detail=document.querySelector("#detail");
+    try {
+      const frames=await replayFilm();
+      function show(i) {
+        const frame=frames[i];
+        for(const id of ["pc","web","mask"])document.getElementById(id).getContext("2d").putImageData(frame[id],0,0);
+        slider.value=i+1;
+        document.querySelector("#number").textContent=(i+1)+" of "+frames.length;
+        previous.disabled=i===0;next.disabled=i===frames.length-1;
+        detail.textContent="Flight update "+frame.flight+" · Impact update "+frame.impact+" · "+frame.different+" of 3,600 pixels differ";
+      }
+      slider.disabled=false;slider.max=frames.length;slider.oninput=()=>show(slider.valueAsNumber-1);
+      previous.onclick=()=>show(slider.valueAsNumber-2);next.onclick=()=>show(slider.valueAsNumber);
+      show(0);
+    } catch(error) {detail.textContent="Could not load the comparison. "+error.message}
+  </script>
+</body>
+</html>

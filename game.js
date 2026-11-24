@@ -1,6 +1,6 @@
 import {DT,loadEngine,setup,launch,moveTank,step} from "./sim.mjs";
 import {RangeDisplay,loadArt} from "./presentation.mjs";
-import {weapons,inventory,openShop,pickWeapon,randomDraft,volleys} from "./match.mjs";
+import {weapons,inventory,openShop,pickWeapon,advanceDraft,volleys} from "./match.mjs";
 
 const $=id=>document.getElementById(id);
 const main=document.querySelector("main"),board=$("board");
@@ -30,6 +30,8 @@ function unlockAudio(){
   if(window.AudioContext){
     context??=new AudioContext();
     loadSound("cannon.wav");
+    loadSound("crick.wav");
+    if(s?.pool)loadSound("pickweap.wav");
     context.resume().catch(()=>{});
   }
   music.play().catch(()=>{});
@@ -84,7 +86,7 @@ function sync(){
       if(stock>=0&&!button.hidden)button.style.top=(462+row*23)/6+"%";
     }
     else button.hidden=stock>=0||id==="yes"||id==="no";
-    button.disabled=!!busy()&&id!=="exit"||id.startsWith("move")&&!s.moves[s.turn];
+    button.disabled=!!s.autoDraft||!!busy()&&id!=="exit"||id.startsWith("move")&&!s.moves[s.turn];
   }
   for(const [id,x] of [["yes",s.finished?278:329],["no",s.finished?423:409]]){
     const b=$(id);b.style.left=x/8+"%";b.style.top=(s.finished?239:277)/6+"%";
@@ -138,6 +140,7 @@ function hit(p){
   return null;
 }
 function beginAdjust(id,p){
+  effect("crick.wav");
   ui.mode=id;
   adjust={at:p,angle:ui.angles[s.turn],power:ui.powers[s.turn],relativeX:0};
 }
@@ -151,8 +154,9 @@ function slide(p){
 function action(id,p){
   if(ui.ended)return;
   if(s.pool){
-    if(id==="random")randomDraft(s);
-    else if(id?.startsWith("pick-"))pickWeapon(s,Number(id.slice(5)));
+    if(s.autoDraft)return;
+    if(id==="random"){s.autoDraft=true;effect("crick.wav")}
+    else if(id?.startsWith("pick-")&&pickWeapon(s,Number(id.slice(5))))effect("crick.wav");
     sync();return;
   }
   if(s.finished){
@@ -160,8 +164,9 @@ function action(id,p){
     if(id==="no")reset("practice");
     return;
   }
-  if(id==="exit"||id==="no"){ui.dialog=id==="exit";finishAdjust();ui.pressed=null;stopHold();sync();return}
+  if(id==="exit"||id==="no"){effect("crick.wav");ui.dialog=id==="exit";finishAdjust();ui.pressed=null;stopHold();sync();return}
   if(id==="yes"){
+    effect("crick.wav");
     ui.dialog=false;ui.ended=true;music.pause();$("loading").textContent=s.mode==="match"?"Start two-player match":"Start Target Practice";
     $("loading").hidden=false;$("loading").setAttribute("role","button");$("loading").tabIndex=0;$("loading").focus();sync();return;
   }
@@ -169,16 +174,17 @@ function action(id,p){
   const turn=s.turn;
   const choice=weaponButtons.indexOf(id);
   if(choice>=0){
-    if(s.mode==="practice"||s.ammo[turn][choice])s.selected[turn]=choice;
+    if(s.mode==="practice"||s.ammo[turn][choice]){s.selected[turn]=choice;effect("crick.wav")}
     ui.mode=null;sync();return;
   }
   switch(id){
-    case "angleleft":case "angleright":ui.angles[turn]=wrap(ui.angles[turn]+(id==="angleleft"?1:-1));break;
-    case "powerleft":case "powerright":ui.powers[turn]=clamp(ui.powers[turn]+(id==="powerleft"?-1:1),1,100);break;
+    case "angleleft":case "angleright":ui.angles[turn]=wrap(ui.angles[turn]+(id==="angleleft"?1:-1));effect("crick.wav");break;
+    case "powerleft":case "powerright":ui.powers[turn]=clamp(ui.powers[turn]+(id==="powerleft"?-1:1),1,100);effect("crick.wav");break;
     case "angle":case "power":beginAdjust(id,p);break;
-    case "moveleft":case "moveright":moveTank(s,id==="moveleft"?-1:1);ui.mode=null;break;
+    case "moveleft":case "moveright":if(moveTank(s,id==="moveleft"?-1:1))effect("crick.wav");ui.mode=null;break;
     case "move":ui.mode="move";break;
     case "weapon":
+      effect("crick.wav");
       ui.mode="weapon";ui.weaponItems=inventory(s);ui.weaponTop=ui.weaponItems.indexOf(s.selected[turn])-2;break;
     case "dismiss":ui.mode=null;break;
     case "weaponup":case "weapondown":{
@@ -196,7 +202,7 @@ board.addEventListener("pointerdown",e=>{
   if(!s||e.button!==0||gesture)return;
   if(ui.ended){reset();return}
   unlockAudio();const p=boardPoint(e);lastPoint=p;ui.pointer=e.pointerType==="mouse"?p:null;let id=hit(p);
-  if(adjust){if(document.pointerLockElement!==board)slide(p);finishAdjust();gesture={pointer:e.pointerId,commit:true};sync();return}
+  if(adjust){if(document.pointerLockElement!==board)slide(p);finishAdjust();effect("crick.wav");gesture={pointer:e.pointerId,commit:true};sync();return}
   board.setPointerCapture(e.pointerId);
   if(ui.mode==="move")id=p.x<s.tanks[s.turn][0]?"moveleft":"moveright";
   gesture={id,p,pointer:e.pointerId};ui.pressed=id;ui.hover=id;
@@ -223,7 +229,7 @@ function release(e,cancel){
   if(!gesture||gesture.pointer!==e.pointerId)return;
   const g=gesture;gesture=null;stopHold();ui.pressed=null;
   if(cancel)finishAdjust();
-  else if(!g.commit&&g.done&&g.dragged&&adjust)finishAdjust();
+  else if(!g.commit&&g.done&&g.dragged&&adjust){finishAdjust();effect("crick.wav")}
   else if(!g.commit&&!g.done&&g.id&&(ui.mode==="move"||g.id===hit(boardPoint(e)))){
     action(g.id,boardPoint(e));
     if(adjust&&e.pointerType==="mouse"&&board.requestPointerLock){
@@ -288,6 +294,7 @@ function frame(t){
   if(!ui.dialog&&!ui.ended){
     lag+=dt;while(lag>=DT){
       const ball=s.ball,active=s.inVolley,moving=s.move,turn=s.turn,score=s.scores[s.turn];
+      if(advanceDraft(s,DT)){ui.turnTime=t;sync()}
       step(s);
       if(turn!==s.turn||moving&&!s.move||active!==s.inVolley||ball&&!s.ball||score!==s.scores[turn]){ui.turnTime=t;sync()}
       lag-=DT;

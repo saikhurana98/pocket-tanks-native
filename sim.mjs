@@ -24,6 +24,7 @@ export function setup(engine,scene,mode="practice") {
   return {engine,solid,tanks:scene.tanks.map(p=>p.slice()),turn:scene.turn,shots:0,move:null,revision:0,
     seed,pending:[],tick:0,balls:[],blasts:[],markers:[],get ball(){return this.balls[0]},get impact(){return this.blasts[0]},
     mode,scores:[0,0],ammo:scene.tanks.map(()=>weapons.map(()=>2)),moves:mode==="match"?[4,4]:[99,99],
+    dirtFalling:false,rockTime:.774,rockIndex:5,
     fragments:[],fx:{seed:scene.fxSeed??seed,particles:[],emitters:[],ticks:0,clock:0,previous:DT},
     selected:[0,0],weapon:0,finished:false,airborne:[null,null],cutters:[],craters:[],dirt:new Map(),dirtAge:0,inVolley:false};
 }
@@ -36,6 +37,7 @@ export function floorAt(s,x,startY=0) {
 export function launch(s,angle,power) {
   if(s.inVolley||s.move||s.finished||s.pool)return false;
   s.dirtAge=DT;
+  s.dirtFalling=false;
   const [x,y,slope]=s.tanks[s.turn],direction=360-angle,e=s.engine;
   s.weapon=s.selected[s.turn];
   if(s.mode==="match"){
