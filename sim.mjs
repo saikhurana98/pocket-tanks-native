@@ -1,6 +1,7 @@
 import {weapons,volleys,roll,prepareColliders,hitsTank,applyBlast,throwTank} from "./match.mjs";
 import {outsideContact} from "./contour.mjs";
 import {queueDirt,advanceDirt} from "./soil.mjs";
+import {advanceCutter,startCutter} from "./cutter.mjs";
 export const W=800, H=450, DT=.004;
 
 export async function loadEngine() {
@@ -20,7 +21,7 @@ export function setup(engine,scene,mode="practice") {
   return {engine,solid,tanks:scene.tanks.map(p=>p.slice()),turn:scene.turn,shots:0,move:null,revision:0,
     seed:scene.seed??crypto.getRandomValues(new Uint32Array(1))[0],pending:[],tick:0,balls:[],blasts:[],markers:[],get ball(){return this.balls[0]},get impact(){return this.blasts[0]},
     mode,scores:[0,0],ammo:scene.tanks.map(()=>weapons.map(()=>2)),moves:mode==="match"?[4,4]:[99,99],
-    selected:[0,0],weapon:0,finished:false,airborne:[null,null],craters:[],dirt:new Map(),dirtAge:0,inVolley:false};
+    selected:[0,0],weapon:0,finished:false,airborne:[null,null],cutters:[],craters:[],dirt:new Map(),dirtAge:0,inVolley:false};
 }
 export function floorAt(s,x,startY=0) {
   let y=Math.max(0,Math.min(H-1,Math.trunc(startY)));
@@ -88,6 +89,8 @@ function releaseDue(s){
       s.balls.push(ball);
     }else if(actor.type==="marker"){
       const marker={x,y,actor,age:0};s.markers.push(marker);s.onMarker?.(marker);
+    }else if(actor.type==="cutter"){
+      s.cutters.push(startCutter(e,actor,x,y,angle,power));
     }else if(actor.type==="jump"){
       // 0x45a760. Jump Jets offsets the tank three pixels along the barrel before takeoff.
       throwTank(s,s.turn,angle,power*.11+1.1,3);
@@ -232,6 +235,7 @@ export function step(s) {
     return active;
   });
   s.markers=s.markers.filter(m=>{m.age+=DT;return m.age<m.actor.seconds});
+  s.cutters=s.cutters.filter(cut=>advanceCutter(s,cut,DT));
   releaseDue(s);
   advanceDirt(s,DT);
   const airborne=s.airborne.map(Boolean);
@@ -244,5 +248,5 @@ export function step(s) {
     if(s.jumpSettling&&id===s.turn&&groundedTick&&!changed)s.jumpSettling=false;
   });
   if(moved)s.colliders=prepareColliders(s);
-  if(!s.ball&&!s.impact&&!s.pending.length&&!s.markers.length&&!s.dirt.size&&!s.airborne.some(Boolean)&&!s.jumpSettling)endTurn(s);
+  if(!s.ball&&!s.impact&&!s.pending.length&&!s.markers.length&&!s.cutters.length&&!s.dirt.size&&!s.airborne.some(Boolean)&&!s.jumpSettling)endTurn(s);
 }

@@ -97,10 +97,10 @@ async function exercise(browser,touch){
   try{
     const errors=[],requests=[];page.on("pageerror",e=>errors.push(e.message));page.on("response",r=>requests.push([r.status(),r.url()]));
     await page.addInitScript(()=>{
-      // The deal includes Jump Jets, Crazy Ivan, Super Tracer and a known opening Single Shot.
+      // The deal includes all three terrain cutters, Jump Jets, Crazy Ivan and an opening Single Shot.
       const fill=Crypto.prototype.getRandomValues;
       Crypto.prototype.getRandomValues=function(bytes){
-        if(bytes instanceof Uint32Array&&bytes.length===1){bytes[0]=59;return bytes}
+        if(bytes instanceof Uint32Array&&bytes.length===1){bytes[0]=2080;return bytes}
         return fill.call(this,bytes);
       };
       window.fx=[];

@@ -1,4 +1,5 @@
 import {blastSprite} from "./blast-art.mjs";
+import {cutterStripes,rasterLine} from "./cutter.mjs";
 import sprites from "./art/animated-shells.json" with {type:"json"};
 import widths from "./art/arsenal.json" with {type:"json"};
 import {weapons,volleys} from "./match.mjs";
@@ -23,6 +24,7 @@ export class RangeDisplay {
     this.buttons=art.buttons;
     this.cursors=art.cursors;
     this.blastFrames=new Map();
+    this.cutterFrames=new WeakMap();
     const mask=document.createElement("canvas");
     mask.width=40;mask.height=153;
     const maskContext=mask.getContext("2d");
@@ -51,6 +53,8 @@ export class RangeDisplay {
   bind(state){
     state.onBlastStep=(b,eroded)=>{if(eroded)this.updateGround(state,b.x,b.actor.radius)};
     state.onDirtStep=changes=>this.dropSoil(state,changes);
+    state.onCut=([x,y,a,b])=>this.clearGround(state,Math.max(0,Math.min(x,a)),Math.max(0,Math.min(y,b)),
+      Math.min(799,Math.max(x,a)+1),Math.min(449,Math.max(y,b)+1));
   }
   dropSoil(state,changes){
     const rgba=new Uint32Array(this.pixels.data.buffer),sky=new Uint32Array(this.sky.buffer);
@@ -66,16 +70,42 @@ export class RangeDisplay {
   }
   updateGround(state,center,radius){
     const left=Math.max(0,Math.trunc(center)-radius+1),right=Math.min(799,Math.trunc(center)+radius);
+    this.clearGround(state,left,0,right,449);
+  }
+  clearGround(state,left,top,right,bottom){
+    if(right<left||bottom<top)return;
     const rgba=new Uint32Array(this.pixels.data.buffer),sky=new Uint32Array(this.sky.buffer);
     for(let x=left;x<=right;x++){
-      for(let y=449;y>=0;y--){
+      for(let y=bottom;y>=top;y--){
         const i=y*800+x;
         if(!state.solid[i]){
           if(this.painted[i]){rgba[i]=sky[y];this.painted[i]=0}
         }
       }
     }
-    this.g.putImageData(this.pixels,0,0,left,0,right-left+1,450);
+    this.g.putImageData(this.pixels,0,0,left,top,right-left+1,bottom-top+1);
+  }
+  cutter(cut){
+    if(!cut.depth)return;
+    let sprite=this.cutterFrames.get(cut);
+    if(sprite?.depth!==cut.depth){
+      const stripes=cutterStripes(cut);
+      const xs=stripes.flatMap(line=>[line[0],line[2]]),ys=stripes.flatMap(line=>[line[1],line[3]]);
+      const left=Math.min(...xs),top=Math.min(...ys),canvas=document.createElement("canvas");
+      canvas.width=Math.max(...xs)-left+2;canvas.height=Math.max(...ys)-top+2;
+      const ctx=canvas.getContext("2d"),pixels=ctx.createImageData(canvas.width,canvas.height);
+      for(const stripe of stripes){
+        const [, , , ,r,g,b]=stripe;
+        rasterLine(stripe,(x,y)=>{
+          for(let j=y-top;j<=y-top+1;j++)for(let i=x-left;i<=x-left+1;i++){
+            const k=(j*canvas.width+i)*4;
+            pixels.data[k]=r;pixels.data[k+1]=g;pixels.data[k+2]=b;pixels.data[k+3]=255;
+          }
+        });
+      }
+      ctx.putImageData(pixels,0,0);sprite={canvas,left,top,depth:cut.depth};this.cutterFrames.set(cut,sprite);
+    }
+    this.ctx.drawImage(sprite.canvas,sprite.left,sprite.top);
   }
   tile(name,n,cols,w,h,x,y,sourceWidth=w) {
     this.ctx.drawImage(this.art[name],n%cols*sourceWidth,Math.floor(n/cols)*h,w,h,x,y,w,h);
@@ -181,6 +211,7 @@ export class RangeDisplay {
       const phase=t-ui.turnTime<25?60:Math.floor((t-ui.turnTime)/25)%60;
       this.tile("arrows",phase+id*72,12,26,60,x-13,y-(id?65:60));
     }
+    for(const cut of s.cutters)this.cutter(cut);
     for(const ball of s.balls){
       this.projectile(ball.actor,ball);
       const animation=ball.actor.animation;

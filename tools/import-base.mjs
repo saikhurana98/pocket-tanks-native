@@ -37,6 +37,7 @@ const palette=decode("art.bbk").match(/<PALETTE number="11"[^>]*>([\s\S]*?)<\/PA
 const rgb=i=>palette.slice(i*3,i*3+3);
 const supported=["Single Shot","Big Shot","3 Shot","5 Shot","Jackhammer","Pile Driver","Mountain Mover","Potholes","Crater Maker","Flash Blast","Laser Battery","Ground Hog","Worm","Late Bloomer","Fission Bomb","Sprinkler","Homing Missile","Tommy Gun","Minigun","Firecracker","Scatter Shot","Tracer","Super Tracer"];
 supported.push("Homing Worm","Pineapple","Spider","Chain Reaction","Heatseeker","Crazy Ivan","Jump Jets");
+supported.push("Dirt Mover","Digger","Well Digger");
 const atlas={"Single Shot":"blast","Big Shot":"big-blast","3 Shot":"three-blast","5 Shot":"five-blast"};
 const sounds=new Set(["cannon.wav","expmedium2.wav","expmedium.wav"]);
 function compile(pack,name){
@@ -86,6 +87,9 @@ function compile(pack,name){
       actors[key]={type:"marker",label:f.TEXT,seconds:Number(f.DISPLAY_TIME)};
     }else if(block.type==="JUMPJETS"){
       actors[key]={type:"jump"};
+    }else if(block.type==="DIRTMOVER"){
+      actors[key]={type:"cutter",minWidth:+f.MIN_WIDTH,maxWidth:+f.MAX_WIDTH,height:+f.HEIGHT,thickness:+f.THICKNESS,
+        backup:+f.BACKUP_DISTANCE,dirt:f.DIRTFALL_FLAG==="TRUE",low:f.LOW_COLOR.split(/\s+/).map(Number),high:f.HIGH_COLOR.split(/\s+/).map(Number)};
     }else throw Error("Unsupported actor "+block.type);
     if(actors[key]&&f.SOUND_EFFECT&&f.SOUND_EFFECT!=="NONE"){actors[key].sound=f.SOUND_EFFECT;sounds.add(f.SOUND_EFFECT)}
     return key;

@@ -9,10 +9,13 @@ function edge(s,x,y){
 }
 export function queueDirt(s,blast,radius){
   const x=Math.trunc(blast.x),y=Math.trunc(blast.y);
-  for(let col=Math.max(0,x-radius);col<=Math.min(width-1,x+radius);col++){
+  queueDirtBounds(s,x-radius,y-radius,x+radius,y+radius);
+}
+export function queueDirtBounds(s,left,upper,right,lower){
+  for(let col=Math.max(0,left);col<=Math.min(width-1,right);col++){
     const old=s.dirt.get(col);
-    const top=edge(s,col,Math.max(0,Math.min(old?.[0]??height-1,y-radius)));
-    const bottom=edge(s,col,Math.min(height-1,Math.max(old?.[1]??0,y+radius)));
+    const top=edge(s,col,Math.max(0,Math.min(old?.[0]??height-1,upper)));
+    const bottom=edge(s,col,Math.min(height-1,Math.max(old?.[1]??0,lower)));
     if(top<bottom)s.dirt.set(col,[top,bottom]);
     else s.dirt.delete(col);
   }
