@@ -194,6 +194,11 @@
         (global.set $vy (f64.add (global.get $vy) (f64.mul (call $sin (local.get $remaining)) (local.get $scale))))))))
     (if (i32.or (f64.lt (global.get $x) (f64.const 0)) (f64.ge (global.get $x) (f64.const 800)))
       (then (return (i32.const 2))))
+    ;; 0x4350cf..0x435109 removes upward-moving shells above the field
+    ;; when their gravity mode cannot bring them back.
+    (if (i32.and (f64.le (global.get $gravity) (f64.const 0))
+          (i32.and (f64.le (global.get $y) (f64.const 0)) (f64.le (global.get $vy) (f64.const 0))))
+      (then (return (i32.const 2))))
     (if (f64.ge (global.get $y) (f64.const 450))
       (then (global.set $bottomContact (i32.const 1)) (global.set $y (f64.const 449)) (return (i32.const 1))))
     (if (i32.eqz (call $contact)) (then (return (i32.const 0))))

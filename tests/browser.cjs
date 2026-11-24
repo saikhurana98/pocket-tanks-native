@@ -96,11 +96,12 @@ async function projectileParity(page){
   const totals=await page.evaluate(async()=>{
     const {loadEngine,setup,launch,step}=await import("./sim.mjs");
     const {weapons}=await import("./match.mjs");
+    const {paintParticles}=await import("./particles.mjs");
     const engine=await loadEngine();
     const response=await fetch("./tests/captures/deluxe.json.gz");
     if(!response.ok)throw Error("Missing original Deluxe shots");
     const traces=await new Response(response.body.pipeThrough(new DecompressionStream("gzip"))).json();
-    let updates=0;
+    let updates=0,blends=0;
     for(const trace of traces){
       const state=setup(engine,trace);
       state.selected[state.turn]=weapons.findIndex(w=>w.entry===trace.trigger);
@@ -117,10 +118,27 @@ async function projectileParity(page){
       }
       if(state.inVolley||frame!==trace.frames.length)throw Error(trace.file+" incomplete replay");
       updates+=frame;
+      if(trace.pixelBlends){
+        const samples=trace.pixelBlends,canvas=document.createElement("canvas");
+        canvas.width=800;canvas.height=Math.ceil(samples.length/800);
+        const ctx=canvas.getContext("2d",{willReadFrequently:true}),base=ctx.createImageData(800,canvas.height);
+        const particles=samples.map(([before,r,g,b,alpha],i)=>{
+          base.data.set([before>>>16&255,before>>>8&255,before&255,255],i*4);
+          return {x:i%800,y:Math.floor(i/800),color:[r,g,b],alpha};
+        });
+        ctx.putImageData(base,0,0);
+        paintParticles(ctx,{fx:{particles},solid:new Uint8Array(800*canvas.height)});
+        const pixels=ctx.getImageData(0,0,800,canvas.height).data;
+        samples.forEach((row,i)=>{
+          const rgb=(pixels[4*i]<<16)|(pixels[4*i+1]<<8)|pixels[4*i+2];
+          if(rgb!==(row[5]&0xffffff))throw Error(trace.file+" particle color at "+i);
+        });
+        blends+=samples.length;
+      }
     }
-    return [traces.length,updates];
+    return [traces.length,updates,blends];
   });
-  console.log("PASS "+totals[0]+" original volleys, "+totals[1]+" exact projectile updates in browser");
+  console.log("PASS "+totals[0]+" original volleys, "+totals[1]+" exact projectile updates and "+totals[2]+" particle pixel comparisons in browser");
 }
 
 async function exercise(browser,touch){
@@ -128,10 +146,10 @@ async function exercise(browser,touch){
   try{
     const errors=[],requests=[];page.on("pageerror",e=>errors.push(e.message));page.on("response",r=>requests.push([r.status(),r.url()]));
     await page.addInitScript(()=>{
-      // The deal includes both Skippers, all three cutters, Jump Jets, Crazy Ivan and an opening Single Shot.
+      // The deal includes Super Skipper, Sniper Rifle, Laser, Popcorn, Color Bomb and an opening Single Shot.
       const fill=Crypto.prototype.getRandomValues;
       Crypto.prototype.getRandomValues=function(bytes){
-        if(bytes instanceof Uint32Array&&bytes.length===1){bytes[0]=60535;return bytes}
+        if(bytes instanceof Uint32Array&&bytes.length===1){bytes[0]=51;return bytes}
         return fill.call(this,bytes);
       };
       window.fx=[];

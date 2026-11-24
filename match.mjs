@@ -89,8 +89,8 @@ export function throwTank(state,id,angle,impulse,offset=0){
   state.airborne[id]=[c*impulse,s*impulse];
   pose[0]+=state.airborne[id][0];pose[1]+=state.airborne[id][1];
 }
-export function applyBlast(state,hit){
-  const weapon=hit.actor,front=Math.min(hit.phase,weapon.radius-1);
+export function applyBlast(state,hit,front=Math.min(hit.phase,hit.actor.radius-1)){
+  const weapon=hit.actor;
   state.tanks.forEach((pose,id)=>{
     if(hit.struck[id])return;
     const [cx,cy]=damageCenter(pose);

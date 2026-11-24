@@ -1,4 +1,5 @@
 import {blastSprite} from "./blast-art.mjs";
+import {paintParticles} from "./particles.mjs";
 import {cutterStripes,rasterLine} from "./cutter.mjs";
 import sprites from "./art/animated-shells.json" with {type:"json"};
 import widths from "./art/arsenal.json" with {type:"json"};
@@ -238,6 +239,7 @@ export class RangeDisplay {
       }
     }
     for(const b of this.blastFrames.keys())if(!s.blasts.includes(b))this.blastFrames.delete(b);
+    paintParticles(c,s);
     for(const m of s.markers){
       this.tracer(m.actor.label,m.x,m.y);
     }

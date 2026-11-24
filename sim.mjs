@@ -2,6 +2,7 @@ import {weapons,volleys,roll,prepareColliders,hitsTank,applyBlast,throwTank} fro
 import {outsideContact,rebound} from "./contour.mjs";
 import {queueDirt,advanceDirt} from "./soil.mjs";
 import {advanceCutter,startCutter} from "./cutter.mjs";
+import {moveParticles,emitParticles,startEmitter} from "./particles.mjs";
 export const W=800, H=450, DT=.004;
 
 export async function loadEngine() {
@@ -19,9 +20,11 @@ export function setup(engine,scene,mode="practice") {
   }
   if(offset!==W*H)throw Error("Incomplete terrain");
   for(const [cell,material] of scene.materialCells??[])solid[cell]=material;
+  const seed=scene.seed??crypto.getRandomValues(new Uint32Array(1))[0];
   return {engine,solid,tanks:scene.tanks.map(p=>p.slice()),turn:scene.turn,shots:0,move:null,revision:0,
-    seed:scene.seed??crypto.getRandomValues(new Uint32Array(1))[0],pending:[],tick:0,balls:[],blasts:[],markers:[],get ball(){return this.balls[0]},get impact(){return this.blasts[0]},
+    seed,pending:[],tick:0,balls:[],blasts:[],markers:[],get ball(){return this.balls[0]},get impact(){return this.blasts[0]},
     mode,scores:[0,0],ammo:scene.tanks.map(()=>weapons.map(()=>2)),moves:mode==="match"?[4,4]:[99,99],
+    fragments:[],fx:{seed:scene.fxSeed??seed,particles:[],emitters:[],ticks:0,clock:0,previous:DT},
     selected:[0,0],weapon:0,finished:false,airborne:[null,null],cutters:[],craters:[],dirt:new Map(),dirtAge:0,inVolley:false};
 }
 export function floorAt(s,x,startY=0) {
@@ -92,6 +95,8 @@ function releaseDue(s){
       const marker={x,y,actor,age:0};s.markers.push(marker);s.onMarker?.(marker);
     }else if(actor.type==="cutter"){
       s.cutters.push(startCutter(e,actor,x,y,angle,power));
+    }else if(actor.type==="shrapnel"){
+      s.fragments.push({actor,x,y,age:0,struck:[false,false],phase:actor.radius});
     }else if(actor.type==="jump"){
       // 0x45a760. Jump Jets offsets the tank three pixels along the barrel before takeoff.
       throwTank(s,s.turn,angle,power*.11+1.1,3);
@@ -182,6 +187,7 @@ function settleTank(s,pose,id){
 }
 export function step(s) {
   const e=s.engine;
+  moveParticles(s.fx,DT);
   if(s.move){
     if(s.move.ticks++%8)return;
     const pose=s.tanks[s.turn],x=pose[0]+s.move.direction;
@@ -190,7 +196,7 @@ export function step(s) {
     if(--s.move.remaining===0)s.move=null;
     return;
   }
-  if(!s.inVolley)return;
+  if(!s.inVolley){if(s.fx.emitters.length)emitParticles(s,DT);return}
   s.tick++;
   s.balls=s.balls.filter(ball=>{
     e.x.value=ball.x;e.y.value=ball.y;e.vx.value=ball.vx;e.vy.value=ball.vy;
@@ -212,7 +218,11 @@ export function step(s) {
       const flags=bottom?0:s.solid[key];
       if(flags&32)ball.bounces=0;
       const rubber=Boolean((flags&64)&&!(flags&32));
-      if(ball.bounces||rubber)event=rebound(s,ball,bottom,rubber)?1:0;
+      if(ball.bounces||rubber){
+        event=rebound(s,ball,bottom,rubber)?1:0;
+        if(!event&&!rubber&&ball.actor.bounceEmitter)startEmitter(s.fx,ball.actor.bounceEmitter,ball.x,ball.y);
+        if(!event&&ball.actor.onBounce)queueTrigger(s,ball.actor.onBounce,ball.x,ball.y,e.impactAngle(),e.impactPower());
+      }
       else if(ball.actor.outside&&!bottom)outsideContact(s,ball);
     }
     const timer=ball.actor.onTimer&&ball.age>=ball.actor.time;
@@ -244,8 +254,18 @@ export function step(s) {
     return active;
   });
   s.markers=s.markers.filter(m=>{m.age+=DT;return m.age<m.actor.seconds});
+  s.fragments=s.fragments.filter(hit=>{
+    if(!hit.age){
+      e.setBlastRadius(hit.actor.radius);
+      applyBlast(s,hit,hit.actor.radius);
+      startEmitter(s.fx,hit.actor.emitter,hit.x,hit.y);
+    }
+    hit.age+=DT;
+    return hit.age<hit.actor.seconds;
+  });
   s.cutters=s.cutters.filter(cut=>advanceCutter(s,cut,DT));
   releaseDue(s);
+  if(s.fx.emitters.length)emitParticles(s,DT);
   advanceDirt(s,DT);
   const airborne=s.airborne.map(Boolean);
   let moved=airborne.some(Boolean);
@@ -257,5 +277,5 @@ export function step(s) {
     if(s.jumpSettling&&id===s.turn&&groundedTick&&!changed)s.jumpSettling=false;
   });
   if(moved)s.colliders=prepareColliders(s);
-  if(!s.ball&&!s.impact&&!s.pending.length&&!s.markers.length&&!s.cutters.length&&!s.dirt.size&&!s.airborne.some(Boolean)&&!s.jumpSettling)endTurn(s);
+  if(!s.ball&&!s.impact&&!s.pending.length&&!s.fragments.length&&!s.markers.length&&!s.cutters.length&&!s.dirt.size&&!s.airborne.some(Boolean)&&!s.jumpSettling)endTurn(s);
 }

@@ -16,6 +16,18 @@ const fixtures=inputs.map(file=>{
   if(r.earthLines)record.cuts=r.earthLines.map(([tick,...sample])=>[tick-start,...sample]);
   if(r.finalTerrain!==undefined)record.finalTerrain=r.finalTerrain;
   if(r.materialCells?.length)record.materialCells=r.materialCells;
+  if(r.fragments){
+    record.shrapnel=r.fragments.map(([tick,x,y,age])=>[tick-start,x,y,age]);
+    record.hits=(r.hits??[]).map(([tick,id,points])=>[tick-start,id,points]);
+  }
+  if(r.paintSamples)record.pixelBlends=r.paintSamples.map(([x,y,...rgba])=>rgba);
+  if(r.particles?.length){
+    // Undo the first CRT rand() advance to initialize the independent graphics stream.
+    record.fxSeed=Math.imul(r.particleRandom[0][3]-2531011,0xb9b33155)>>>0;
+    record.particles=r.particles.map(([tick,pool,x,y,vx,vy,r,g,b,alpha])=>[tick-start,x,y,vx,vy,r,g,b,alpha]);
+    record.pool=r.particlePool.filter(row=>row[0]>=start).map(([tick,counter,period,clock,gravity,collision,head,...particle])=>
+      [tick-start,counter,clock,...(head<0?[]:particle)]);
+  }
   if(r.paint)record.paint=Object.fromEntries(r.paint.map(([depth,lines])=>[depth,lines.map(line=>line.map((v,i)=>i<4?v:v&255))]));
   if(r.jets){
     record.jump=r.jetPoses.filter(row=>row[0]>=start).map(row=>row[1+r.turn]);

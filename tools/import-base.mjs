@@ -39,8 +39,26 @@ const supported=["Single Shot","Big Shot","3 Shot","5 Shot","Jackhammer","Pile D
 supported.push("Homing Worm","Pineapple","Spider","Chain Reaction","Heatseeker","Crazy Ivan","Jump Jets");
 supported.push("Dirt Mover","Digger","Well Digger");
 supported.push("Skipper","Super Skipper");
+supported.push("Sniper Rifle","Laser");
+supported.push("Popcorn","Color Bomb");
 const atlas={"Single Shot":"blast","Big Shot":"big-blast","3 Shot":"three-blast","5 Shot":"five-blast"};
 const sounds=new Set(["cannon.wav","expmedium2.wav","expmedium.wav"]);
+const emitterPacks=["emitter.emi","emitter2.emi"].map(file=>decode(path.join("weapdata",file)));
+function radialEmitter(pack,id,seconds){
+  const source=[emitterPacks[packs.indexOf(pack)],...emitterPacks].join("\n");
+  const emitter=Array.from(source.matchAll(/<EMITTER\s+name="([^"]+)">([\s\S]*?)<\/EMITTER>/gi))
+    .find(m=>m[1].toLowerCase()===id.toLowerCase());
+  if(!emitter)throw Error("Missing particle emitter "+id);
+  const nodes=Array.from(emitter[2].matchAll(/<NODE\s+([\s\S]*?)\/>/gi),m=>{
+    const f=Object.fromEntries(Array.from(m[1].matchAll(/(\w+)="([^"]*)"/g),a=>a.slice(1)));
+    if(+f.pivitParent!==-1||+f.pivitDistance||+f.pivitRotationSpeed_DPS||+f.sprayAngle||+f.sprayRotationSpeed_DPS||
+       +f.pauseLength||+f.a!==255||+f.emitLength<seconds)throw Error("Unsupported particle node "+id);
+    return [+f.particlesPerSecond,+f.particleLowSpeed_PPS,+f.particleHighSpeed_PPS,
+      +f.spraySpread/180*3.1415927,[+f.r,+f.g,+f.b]];
+  });
+  if(!nodes.length)throw Error("Empty emitter "+id);
+  return {seconds,nodes};
+}
 function compile(pack,name){
   const actors={},triggers={};
   function visit(id){
@@ -83,6 +101,9 @@ function compile(pack,name){
         if(f.BOUNCE_SOUND_EFFECT&&f.BOUNCE_SOUND_EFFECT!=="NONE"){
           actors[key].bounceSound=f.BOUNCE_SOUND_EFFECT;sounds.add(f.BOUNCE_SOUND_EFFECT);
         }
+        if(f.BOUNCE_EMITTER_NAME&&f.BOUNCE_EMITTER_NAME!=="NONE")
+          actors[key].bounceEmitter=radialEmitter(pack,f.BOUNCE_EMITTER_NAME,+f.BOUNCE_EMITTER_TIME);
+        if(f.BOUNCE_TRIGGER&&f.BOUNCE_TRIGGER!=="NONE")actors[key].onBounce=visit(f.BOUNCE_TRIGGER);
       }
     }else if(block.type==="EXPLOSION"){
       if(f.DRAW_DIRECTION!=="EXPLOSION_OUT"||f.DOUBLE_UP_FLAG!=="TRUE")throw Error(id);
@@ -91,6 +112,9 @@ function compile(pack,name){
         dirt:f.DIRTFALL_FLAG==="TRUE",knockback:f.THROW_TANK_FLAG==="TRUE",eraseDelay:+f.ERASE_DELAY,
         inward:f.ERASE_DIRECTION==="EXPLOSION_IN",colors};
       if(atlas[name])actors[key].atlas=atlas[name];
+    }else if(block.type==="SHRAPNEL"){
+      actors[key]={type:"shrapnel",radius:+f.RADIUS,damage:+f.DAMAGE,knockback:f.THROW_TANK_FLAG==="TRUE",
+        seconds:+f.TOTAL_TIME,emitter:radialEmitter(pack,f.EMITTER_NAME,+f.EMITTER_TIME)};
     }else if(block.type==="TRACER"){
       actors[key]={type:"marker",label:f.TEXT,seconds:Number(f.DISPLAY_TIME)};
     }else if(block.type==="JUMPJETS"){
