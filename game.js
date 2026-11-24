@@ -13,10 +13,12 @@ const labels={angleleft:"Increase angle",angleright:"Decrease angle",powerleft:"
   exit:"End game",yes:"End game",no:"Continue playing",random:"Random weapons"};
 const ui={hover:null,pressed:null,mode:null,dialog:false,ended:false,turnTime:0};
 let engine,scene,matchScene,display,s,clock,lag=0,hold,gesture,adjust,lastPoint,sound=true,context,sounds;
-const music=new Audio("./audio/ingame.mp3");music.preload="none";music.loop=true;music.volume=.4;
+const music=new Audio();music.preload="none";music.loop=true;music.volume=.4;
 const effects=["cannon","expmedium2","expmedium"].map(name=>"./audio/"+name+".wav");
+const mediaVoices=effects.map(()=>[]);
 function unlockAudio(){
   if(!sound)return;
+  if(!music.getAttribute("src"))music.src="./audio/ingame.mp3";
   if(window.AudioContext){
     context??=new AudioContext();
     sounds??=Promise.all(effects.map(async url=>{
@@ -28,8 +30,19 @@ function unlockAudio(){
   music.play().catch(()=>{});
 }
 async function effect(which){
-  const b=await sounds;if(!sound||!b||context.state!=="running")return;
-  const src=context.createBufferSource();src.buffer=b[which];src.connect(context.destination);src.start();
+  if(!sound)return;
+  if(context?.state==="running"){
+    const buffers=await sounds;
+    if(!sound)return;
+    if(buffers&&context.state==="running"){
+      const src=context.createBufferSource();src.buffer=buffers[which];src.connect(context.destination);src.start();
+      return;
+    }
+  }
+  const voices=mediaVoices[which];
+  let voice=voices.find(audio=>audio.paused||audio.ended);
+  if(!voice){voice=new Audio(effects[which]);voices.push(voice)}
+  voice.play().catch(()=>{});
 }
 function busy(){return s.inVolley||s.move}
 function stopHold(){clearTimeout(hold);clearInterval(hold);hold=null}
@@ -215,7 +228,10 @@ $("newmatch").onclick=()=>{if(s){unlockAudio();reset("match")}};
 $("practice").onclick=()=>{if(s)reset("practice")};
 $("sound").onclick=()=>{
   sound=!sound;$("sound").textContent=sound?"Sound on":"Sound off";$("sound").setAttribute("aria-pressed",String(sound));
-  if(sound)unlockAudio();else {music.pause();context?.suspend().catch(()=>{})}
+  if(sound)unlockAudio();else {
+    music.pause();context?.suspend().catch(()=>{});
+    for(const voices of mediaVoices)for(const voice of voices){voice.pause();voice.currentTime=0}
+  }
 };
 function stretch(value){
   main.classList.toggle("stretched",value);$("size").setAttribute("aria-pressed",String(value));

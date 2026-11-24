@@ -85,8 +85,21 @@ async function exercise(browser,touch){
   const page=await browser.newPage({viewport:touch?{width:390,height:750}:{width:1366,height:768},isMobile:touch,hasTouch:touch});
   try{
     const errors=[],requests=[];page.on("pageerror",e=>errors.push(e.message));page.on("response",r=>requests.push([r.status(),r.url()]));
-    await page.addInitScript(()=>{window.fx=[];const start=AudioBufferSourceNode.prototype.start;AudioBufferSourceNode.prototype.start=function(...args){window.fx.push(this.buffer?.duration);return start.apply(this,args)}});
+    await page.addInitScript(()=>{
+      window.fx=[];
+      const source=window.AudioBufferSourceNode?.prototype;
+      if(source){
+        const start=source.start;
+        source.start=function(...args){window.fx.push(this.buffer?.duration);return start.apply(this,args)};
+      }
+      const play=HTMLMediaElement.prototype.play;
+      HTMLMediaElement.prototype.play=function(...args){
+        if(this.src.endsWith(".wav"))window.fx.push(this.src);
+        return play.apply(this,args);
+      };
+    });
     await page.goto(url);await page.waitForFunction(()=>document.querySelector("#status").textContent.startsWith("Player 1"));
+    assert(!requests.some(([,u])=>u.includes("/audio/")),"Audio downloaded before first interaction");
     if(!touch)await pixelParity(page);
     const screen=page.locator("#board");
     const xy=async(x,y)=>{const r=await screen.boundingBox();return [r.x+x*r.width/800,r.y+y*r.height/600]};
@@ -104,13 +117,21 @@ async function exercise(browser,touch){
     }
     if(!touch){
       for(const [x,y,control,expected] of [[520,482,"angle","Adjust aim, 55 degrees"],[497,548,"power","Adjust power, 25"]]){
-        await tap(x,y);await page.mouse.move(...await xy(x+20,y+30));await page.mouse.click(...await xy(x+20,y+30));
+        await tap(x,y);
+        let target=await xy(x+20,y+30);
+        if(browser.browserType().name()==="firefox"&&await page.evaluate(()=>!!document.pointerLockElement)){
+          // Firefox's automation driver places a locked pointer at viewport center after each event.
+          const {width,height}=await screen.boundingBox(),viewport=page.viewportSize();
+          target=[viewport.width/2+20*width/800,viewport.height/2+30*height/600];
+        }
+        await page.mouse.move(...target);await page.mouse.down();await page.mouse.up();
         assert.equal(await page.locator("#"+control).getAttribute("aria-label"),expected);
       }
       await click("#reset");
     }
     await tap(405,493);await status("Shot in flight");await status("Player 2");assert.notDeepEqual(await pixel(),initial);
-    await page.waitForFunction(()=>window.fx.length>=2);assert((await page.evaluate(()=>window.fx)).every(v=>v>0));
+    await page.waitForFunction(()=>window.fx.length>=2);
+    assert((await page.evaluate(()=>window.fx)).every(v=>typeof v==="number"?v>0:/\/(cannon|expmedium2|expmedium)\.wav$/.test(v)));
     await tap(405,493);await status("Player 1");await click("#reset");assert.deepEqual(await pixel(),initial);
     await tap(248,490);await status("Moving");await status("Player 1");
     for(const [row,name] of [[2,"3 Shot"],[3,"5 Shot"],[0,"Single Shot"]]){
@@ -118,6 +139,9 @@ async function exercise(browser,touch){
       assert.equal(await page.locator("#fire").getAttribute("aria-label"),"Fire "+name);
     }
     await click("#full");await page.waitForFunction(()=>document.fullscreenElement||document.querySelector(".expanded"));
+    if(browser.browserType().name()==="firefox"){
+      await page.waitForFunction(height=>innerHeight===height,page.viewportSize().height);
+    }
     await tap(552,574);assert.equal(await page.locator("#power").getAttribute("aria-label"),"Adjust power, 21");
     await tap(770,590);assert(await page.locator("#no").isVisible());await click("#full");await tap(440,288);
     await click("#sound");assert.equal(await page.locator("#sound").getAttribute("aria-pressed"),"false");
@@ -152,6 +176,10 @@ async function exercise(browser,touch){
 }
 const browserName=process.argv[3]||"chromium";
 (async()=>{for(const touch of browserName==="chromium"?[false,true]:[false]){
-  const browser=await playwright[browserName].launch(browserName==="chromium"?{executablePath:process.env.EDGE_PATH,args:touch?["--disable-gpu","--disable-webgl"]:[]}:{});
+  const options=browserName==="firefox"?{firefoxUserPrefs:{
+    "full-screen-api.transition-duration.enter":"0 0","full-screen-api.transition-duration.leave":"0 0"
+  }}:{};
+  if(browserName==="chromium")Object.assign(options,{executablePath:process.env.EDGE_PATH,args:touch?["--disable-gpu","--disable-webgl"]:[]});
+  const browser=await playwright[browserName].launch(options);
   try{await exercise(browser,touch)}finally{await browser.close()}
 }})().catch(e=>{console.error(e);process.exitCode=1});
