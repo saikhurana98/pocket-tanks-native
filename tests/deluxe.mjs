@@ -6,7 +6,7 @@ import {cutterStripes} from "../cutter.mjs";
 import {deal,weapons} from "../match.mjs";
 import {setup,launch,step} from "../sim.mjs";
 const read=p=>readFileSync(new URL(p,import.meta.url));
-const {instance}=await WebAssembly.instantiate(read("../engine/single-shot.wasm"),{math:Math});
+const {instance}=await WebAssembly.instantiate(read("../engine/single-shot.wasm"));
 // Shop records at 0x55e4b0, read in screen order after the original dealt from all installed packs.
 assert.deepEqual(deal({engine:instance.exports,seed:3930},Array.from({length:320},(_,i)=>i)),
   [24,247,278,30,287,47,212,138,180,100,205,301,175,193,208,113,149,206,96,225]);

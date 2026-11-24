@@ -7,7 +7,7 @@ export const W=800, H=450, DT=.004;
 export async function loadEngine() {
   const response=await fetch(new URL("./engine/single-shot.wasm",import.meta.url));
   if(!response.ok) throw Error("Could not load Single Shot");
-  const {instance}=await WebAssembly.instantiate(await response.arrayBuffer(),{math:Math});
+  const {instance}=await WebAssembly.instantiate(await response.arrayBuffer());
   return instance.exports;
 }
 export function setup(engine,scene,mode="practice") {

@@ -92,6 +92,37 @@ async function pixelParity(page){
   assert.equal(tracerPixels,"aa24771fffc52d1d441e6cbb021b5af829a268020f4e7276aff8c6282090969e","Original tracer label pixels");
 }
 
+async function projectileParity(page){
+  const totals=await page.evaluate(async()=>{
+    const {loadEngine,setup,launch,step}=await import("./sim.mjs");
+    const {weapons}=await import("./match.mjs");
+    const engine=await loadEngine();
+    const response=await fetch("./tests/captures/deluxe.json.gz");
+    if(!response.ok)throw Error("Missing original Deluxe shots");
+    const traces=await new Response(response.body.pipeThrough(new DecompressionStream("gzip"))).json();
+    let updates=0;
+    for(const trace of traces){
+      const state=setup(engine,trace);
+      state.selected[state.turn]=weapons.findIndex(w=>w.entry===trace.trigger);
+      if(!launch(state,360-trace.angle,trace.power))throw Error("Could not launch "+trace.file);
+      let frame=0;
+      for(let tick=0;state.inVolley&&tick<10000;tick++){
+        const active=state.balls.slice();
+        step(state);
+        for(const ball of active){
+          const row=trace.frames[frame++];
+          if(!row||tick!==row[0]||ball.x!==row[1]||ball.y!==row[2]||ball.vx!==row[3]||ball.vy!==row[4])
+            throw Error(trace.file+" projectile diverged at tick "+tick);
+        }
+      }
+      if(state.inVolley||frame!==trace.frames.length)throw Error(trace.file+" incomplete replay");
+      updates+=frame;
+    }
+    return [traces.length,updates];
+  });
+  console.log("PASS "+totals[0]+" original volleys, "+totals[1]+" exact projectile updates in browser");
+}
+
 async function exercise(browser,touch){
   const page=await browser.newPage({viewport:touch?{width:390,height:750}:{width:1366,height:768},isMobile:touch,hasTouch:touch});
   try{
@@ -117,7 +148,7 @@ async function exercise(browser,touch){
     });
     await page.goto(url);await page.waitForFunction(()=>document.querySelector("#status").textContent.startsWith("Player 1"));
     assert(!requests.some(([,u])=>u.includes("/audio/")),"Audio downloaded before first interaction");
-    if(!touch)await pixelParity(page);
+    if(!touch){await pixelParity(page);await projectileParity(page)}
     const screen=page.locator("#board");
     const xy=async(x,y)=>{const r=await screen.boundingBox();return [r.x+x*r.width/800,r.y+y*r.height/600]};
     const tap=async(x,y)=>{const [cx,cy]=await xy(x,y);if(touch)await page.touchscreen.tap(cx,cy);else await page.mouse.click(cx,cy)};

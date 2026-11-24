@@ -3,7 +3,7 @@ import fs from "node:fs";
 import {gunzipSync} from "node:zlib";
 const fixture = JSON.parse(gunzipSync(fs.readFileSync(new URL("./captures/single-shot.json.gz",import.meta.url))));
 const bytes = fs.readFileSync(new URL("../engine/single-shot.wasm",import.meta.url));
-const {instance} = await WebAssembly.instantiate(bytes,{math:Math});
+const {instance} = await WebAssembly.instantiate(bytes);
 const engine = instance.exports, board = new Uint8Array(engine.memory.buffer);
 const fields = ["x","y","vx","vy"];
 let flightTicks=0, blastTicks=0, poseCount=0, maxFlightError=0, maxEventError=0;

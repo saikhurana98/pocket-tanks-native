@@ -5,7 +5,7 @@ import {setup,launch,step} from "../sim.mjs";
 import {weapons} from "../match.mjs";
 
 const read=path=>readFileSync(new URL(path,import.meta.url));
-const {instance}=await WebAssembly.instantiate(read("../engine/single-shot.wasm"),{math:Math});
+const {instance}=await WebAssembly.instantiate(read("../engine/single-shot.wasm"));
 const e=instance.exports;
 const fixtures=JSON.parse(gunzipSync(read("./captures/match.json.gz")));
 for(const [name,r] of Object.entries(fixtures)){

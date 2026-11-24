@@ -1,7 +1,62 @@
 (module
   ;; 32-bit Pocket Tanks Deluxe, SingleShotBullet path.
   ;; 0x4398f0 uses the game CRT's sin and cos. Angles here use screen coordinates.
-  (import "math" "atan2" (func $atan2 (param f64 f64) (result f64)))
+  ;; First-quadrant arctangent used by the CRT angle routine below.
+  ;; Range reduction and coefficients adapted from fdlibm s_atan.c, netlib.org/fdlibm.
+  ;; Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.
+  ;; Developed at SunSoft, a Sun Microsystems, Inc. business.
+  ;; Permission to use, copy, modify, and distribute this software is freely granted,
+  ;; provided that this notice is preserved.
+  (func $atan2 (param $y f64) (param $x f64) (result f64)
+    (local $r f64) (local $hi f64) (local $lo f64)
+    (local $z f64) (local $w f64) (local $odd f64) (local $even f64) (local $tail f64)
+    (if (f64.eq (local.get $y) (f64.const 0)) (then (return (f64.const 0))))
+    (local.set $r (f64.div (local.get $y) (local.get $x)))
+    (if (f64.ge (local.get $r) (f64.const 0.4375))
+      (then
+        (if (f64.lt (local.get $r) (f64.const 0.6875))
+          (then
+            (local.set $hi (f64.const 0.4636476090008061))
+            (local.set $lo (f64.const 2.2698777452961687e-17))
+            (local.set $r (f64.div (f64.sub (f64.mul (f64.const 2) (local.get $r)) (f64.const 1))
+                                  (f64.add (f64.const 2) (local.get $r)))))
+          (else (if (f64.lt (local.get $r) (f64.const 1.1875))
+            (then
+              (local.set $hi (f64.const 0.7853981633974483))
+              (local.set $lo (f64.const 3.061616997868383e-17))
+              (local.set $r (f64.div (f64.sub (local.get $r) (f64.const 1))
+                                    (f64.add (local.get $r) (f64.const 1)))))
+            (else (if (f64.lt (local.get $r) (f64.const 2.4375))
+              (then
+                (local.set $hi (f64.const 0.982793723247329))
+                (local.set $lo (f64.const 1.3903311031230998e-17))
+                (local.set $r (f64.div (f64.sub (local.get $r) (f64.const 1.5))
+                                      (f64.add (f64.const 1) (f64.mul (f64.const 1.5) (local.get $r))))))
+              (else
+                (local.set $hi (f64.const 1.5707963267948966))
+                (local.set $lo (f64.const 6.123233995736766e-17))
+                (local.set $r (f64.div (f64.const -1) (local.get $r)))))))))))
+    (local.set $z (f64.mul (local.get $r) (local.get $r)))
+    (local.set $w (f64.mul (local.get $z) (local.get $z)))
+    ;; Odd powers of x squared.
+    f64.const 0.016285820115365782
+    local.get $w   f64.mul   f64.const 0.049768779946159324   f64.add
+    local.get $w   f64.mul   f64.const 0.06661073137387531   f64.add
+    local.get $w   f64.mul   f64.const 0.09090887133436507   f64.add
+    local.get $w   f64.mul   f64.const 0.14285714272503466   f64.add
+    local.get $w   f64.mul   f64.const 0.3333333333333293   f64.add
+    local.get $z   f64.mul   local.set $odd
+    ;; Even powers of x squared.
+    f64.const -0.036531572744216916
+    local.get $w   f64.mul   f64.const -0.058335701337905735   f64.add
+    local.get $w   f64.mul   f64.const -0.0769187620504483   f64.add
+    local.get $w   f64.mul   f64.const -0.11111110405462356   f64.add
+    local.get $w   f64.mul   f64.const -0.19999999999876483   f64.add
+    local.get $w   f64.mul   local.set $even
+    (local.set $tail (f64.mul (local.get $r) (f64.add (local.get $odd) (local.get $even))))
+    (if (result f64) (f64.eq (local.get $hi) (f64.const 0))
+      (then (f64.sub (local.get $r) (local.get $tail)))
+      (else (f64.sub (local.get $hi) (f64.sub (f64.sub (local.get $tail) (local.get $lo)) (local.get $r))))))
   (memory (export "memory") 6)
   ;; CRT sine/cosine game-angle path, 0x4c6c65..0x4c6da6 and
   ;; 0x4c6e35..0x4c6f76. Both routines use the same 64 table rows.

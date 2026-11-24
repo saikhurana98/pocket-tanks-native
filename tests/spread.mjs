@@ -5,7 +5,7 @@ import {setup,launch,step} from "../sim.mjs";
 import {weapons} from "../match.mjs";
 
 const read=p=>readFileSync(new URL(p,import.meta.url));
-const {instance}=await WebAssembly.instantiate(read("../engine/single-shot.wasm"),{math:Math});
+const {instance}=await WebAssembly.instantiate(read("../engine/single-shot.wasm"));
 for(const r of JSON.parse(gunzipSync(read("./captures/spread.json.gz")))){
   const s=setup(instance.exports,r),index=r.name==="3ShotTrigger"?2:3,radius=weapons[index].radius;
   s.selected[s.turn]=index;
