@@ -1,5 +1,5 @@
 import {weapons,volleys,roll,prepareColliders,hitsTank,applyBlast,throwTank} from "./match.mjs";
-import {outsideContact} from "./contour.mjs";
+import {outsideContact,rebound} from "./contour.mjs";
 import {queueDirt,advanceDirt} from "./soil.mjs";
 import {advanceCutter,startCutter} from "./cutter.mjs";
 export const W=800, H=450, DT=.004;
@@ -18,6 +18,7 @@ export function setup(engine,scene,mode="practice") {
     offset+=length;
   }
   if(offset!==W*H)throw Error("Incomplete terrain");
+  for(const [cell,material] of scene.materialCells??[])solid[cell]=material;
   return {engine,solid,tanks:scene.tanks.map(p=>p.slice()),turn:scene.turn,shots:0,move:null,revision:0,
     seed:scene.seed??crypto.getRandomValues(new Uint32Array(1))[0],pending:[],tick:0,balls:[],blasts:[],markers:[],get ball(){return this.balls[0]},get impact(){return this.blasts[0]},
     mode,scores:[0,0],ammo:scene.tanks.map(()=>weapons.map(()=>2)),moves:mode==="match"?[4,4]:[99,99],
@@ -85,7 +86,7 @@ function releaseDue(s){
     if(actor.sound)s.onSound?.(actor.sound);
     if(actor.type==="bullet"){
       e.launch(x,y,angle,power);
-      const ball={actor,frame:0,frameTime:0,age:0,fresh:true,x,y,vx:e.vx.value,vy:e.vy.value,trail:[]};
+      const ball={actor,bounces:actor.bounces??0,frame:0,frameTime:0,age:0,fresh:true,x,y,vx:e.vx.value,vy:e.vy.value,trail:[]};
       s.balls.push(ball);
     }else if(actor.type==="marker"){
       const marker={x,y,actor,age:0};s.markers.push(marker);s.onMarker?.(marker);
@@ -199,13 +200,21 @@ export function step(s) {
     e.dropTarget(ball.actor.dropSound?targetX:-9999);
     e.proximityTarget(targetX,targetY,ball.actor.distance??0);
     e.homing(ball.actor.homingRange??0,ball.actor.homingMagnitude??0);
-    const event=e.step(DT,0);
+    let event=e.step(DT,0);
     ball.age+=DT;
     if(e.dropping.value&&!ball.dropped){s.onSound?.(ball.actor.dropSound);ball.dropped=true}
     ball.x=e.x.value;ball.y=e.y.value;ball.vx=e.vx.value;ball.vy=e.vy.value;
     if(e.approach.value)queueTrigger(s,ball.actor.onApproach,e.approachX.value,e.approachY.value,e.approachAngle.value,e.approachPower.value);
     if(event===2)return false;
-    if(event===1&&ball.actor.outside&&ball.y!==449)outsideContact(s,ball);
+    if(event===1){
+      const bottom=Boolean(e.bottomContact.value);
+      const key=Math.trunc(ball.y)*W+Math.trunc(ball.x);
+      const flags=bottom?0:s.solid[key];
+      if(flags&32)ball.bounces=0;
+      const rubber=Boolean((flags&64)&&!(flags&32));
+      if(ball.bounces||rubber)event=rebound(s,ball,bottom,rubber)?1:0;
+      else if(ball.actor.outside&&!bottom)outsideContact(s,ball);
+    }
     const timer=ball.actor.onTimer&&ball.age>=ball.actor.time;
     if(timer||event===1||hitsTank(s,ball.x,ball.y)){
       queueTrigger(s,timer?ball.actor.onTimer:ball.actor.onImpact,ball.x,ball.y,e.impactAngle(),e.impactPower());

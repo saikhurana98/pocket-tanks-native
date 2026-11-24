@@ -15,6 +15,7 @@ const fixtures=inputs.map(file=>{
   if(r.poses)record.poses=r.poses.map(([tick,...poses])=>[tick-start,...poses]);
   if(r.earthLines)record.cuts=r.earthLines.map(([tick,...sample])=>[tick-start,...sample]);
   if(r.finalTerrain!==undefined)record.finalTerrain=r.finalTerrain;
+  if(r.materialCells?.length)record.materialCells=r.materialCells;
   if(r.paint)record.paint=Object.fromEntries(r.paint.map(([depth,lines])=>[depth,lines.map(line=>line.map((v,i)=>i<4?v:v&255))]));
   if(r.jets){
     record.jump=r.jetPoses.filter(row=>row[0]>=start).map(row=>row[1+r.turn]);

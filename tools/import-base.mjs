@@ -38,6 +38,7 @@ const rgb=i=>palette.slice(i*3,i*3+3);
 const supported=["Single Shot","Big Shot","3 Shot","5 Shot","Jackhammer","Pile Driver","Mountain Mover","Potholes","Crater Maker","Flash Blast","Laser Battery","Ground Hog","Worm","Late Bloomer","Fission Bomb","Sprinkler","Homing Missile","Tommy Gun","Minigun","Firecracker","Scatter Shot","Tracer","Super Tracer"];
 supported.push("Homing Worm","Pineapple","Spider","Chain Reaction","Heatseeker","Crazy Ivan","Jump Jets");
 supported.push("Dirt Mover","Digger","Well Digger");
+supported.push("Skipper","Super Skipper");
 const atlas={"Single Shot":"blast","Big Shot":"big-blast","3 Shot":"three-blast","5 Shot":"five-blast"};
 const sounds=new Set(["cannon.wav","expmedium2.wav","expmedium.wav"]);
 function compile(pack,name){
@@ -75,6 +76,13 @@ function compile(pack,name){
       }
       if(f.HOMING_FLAG==="TRUE"){
         actors[key].homingRange=Number(f.HOMING_DISTANCE);actors[key].homingMagnitude=Number(f.HOMING_MAGNITUDE);
+      }
+      if(Number(f.BOUNCE_COUNT)>0){
+        actors[key].bounces=Number(f.BOUNCE_COUNT);
+        actors[key].bounceImpulse=Number(f.BOUNCE_IMPULSE);
+        if(f.BOUNCE_SOUND_EFFECT&&f.BOUNCE_SOUND_EFFECT!=="NONE"){
+          actors[key].bounceSound=f.BOUNCE_SOUND_EFFECT;sounds.add(f.BOUNCE_SOUND_EFFECT);
+        }
       }
     }else if(block.type==="EXPLOSION"){
       if(f.DRAW_DIRECTION!=="EXPLOSION_OUT"||f.DOUBLE_UP_FLAG!=="TRUE")throw Error(id);

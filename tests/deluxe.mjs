@@ -31,14 +31,14 @@ for(const trace of JSON.parse(gunzipSync(read("./captures/deluxe.json.gz")))){
   s.onCut=line=>{
     const [x,y,a,b]=line;let hash=2166136261;
     for(let j=Math.max(0,Math.min(y,b)-2);j<=Math.min(449,Math.max(y,b)+2);j++)
-      for(let i=Math.max(0,Math.min(x,a)-2);i<=Math.min(799,Math.max(x,a)+2);i++)hash=Math.imul(hash^s.solid[j*800+i],16777619);
+      for(let i=Math.max(0,Math.min(x,a)-2);i<=Math.min(799,Math.max(x,a)+2);i++)hash=Math.imul(hash^Number(Boolean(s.solid[j*800+i])),16777619);
     const sample=[tick,...line,hash>>>0];assert.deepEqual(sample,trace.cuts[cuts.length],trace.file+" cut "+cuts.length);cuts.push(sample);
   };
   s.onBlastStep=b=>{
     const r=b.actor.radius,cx=Math.trunc(b.x),cy=Math.trunc(b.y);
     let hash=2166136261;
     for(let y=Math.max(0,cy-r-2);y<=Math.min(449,cy+r+2);y++)
-      for(let x=Math.max(0,cx-r-2);x<=Math.min(799,cx+r+2);x++)hash=Math.imul(hash^s.solid[y*800+x],16777619);
+      for(let x=Math.max(0,cx-r-2);x<=Math.min(799,cx+r+2);x++)hash=Math.imul(hash^Number(Boolean(s.solid[y*800+x])),16777619);
     assert.deepEqual([tick,b.x,b.y,r,hash>>>0],trace.blasts[burst++],trace.file+" blast at "+tick);
   };
   for(;s.inVolley&&tick<10000;tick++){
@@ -69,7 +69,7 @@ for(const trace of JSON.parse(gunzipSync(read("./captures/deluxe.json.gz")))){
   if(trace.cuts)assert.equal(cuts.length,trace.cuts.length);
   if(trace.finalTerrain!==undefined){
     let hash=2166136261;
-    for(const cell of s.solid)hash=Math.imul(hash^cell,16777619);
+    for(const cell of s.solid)hash=Math.imul(hash^Number(Boolean(cell)),16777619);
     assert.equal(hash>>>0,trace.finalTerrain,trace.file+" settled terrain");
   }
   if(trace.jump)assert(tick>=trace.jump.length,trace.file+" ended before landing and settling");

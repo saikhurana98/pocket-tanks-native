@@ -154,9 +154,11 @@
   (func (export "setFlightMode") (param $g f64) (param $air i32) (param $first i32)
     (global.set $fresh (local.get $first))
     (global.set $gravity (local.get $g)) (global.set $hitAir (local.get $air)))
-  (func $contact (result i32) (i32.xor (global.get $hitAir) (call $solid)))
+  (func $contact (result i32) (i32.xor (global.get $hitAir) (i32.ne (call $solid) (i32.const 0))))
+  (global $bottomContact (export "bottomContact") (mut i32) (i32.const 0))
   (func (export "step") (param $dt f64) (param $wind f64) (result i32)
     (local $scale f64) (local $sx f64) (local $sy f64) (local $remaining f64)
+    (global.set $bottomContact (i32.const 0))
     ;; 0x4343f7..0x4344bc. The update stores each velocity before using it.
     (global.set $vy (f64.add (f64.mul (global.get $gravity) (f64.mul (f64.const 5.4) (local.get $dt))) (global.get $vy)))
     (global.set $vx (f64.add (f64.mul (f64.mul (local.get $wind) (f64.const 0.02)) (local.get $dt)) (global.get $vx)))
@@ -193,7 +195,7 @@
     (if (i32.or (f64.lt (global.get $x) (f64.const 0)) (f64.ge (global.get $x) (f64.const 800)))
       (then (return (i32.const 2))))
     (if (f64.ge (global.get $y) (f64.const 450))
-      (then (global.set $y (f64.const 449)) (return (i32.const 1))))
+      (then (global.set $bottomContact (i32.const 1)) (global.set $y (f64.const 449)) (return (i32.const 1))))
     (if (i32.eqz (call $contact)) (then (return (i32.const 0))))
     ;; 0x4351a3..0x43526e and 0x4354f9..0x435508, ordinary terrain.
     (local.set $sx (f64.div (global.get $vx) (f64.const 20)))
