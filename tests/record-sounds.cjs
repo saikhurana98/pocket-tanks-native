@@ -1,6 +1,7 @@
 // Install inside a browser page before its first sound is loaded.
 module.exports = function recordSounds() {
   window.played = [];
+  window.mediaRequests = [];
   const context = window.AudioContext?.prototype;
   if (context && window.AudioBufferSourceNode) {
     const names = new WeakMap(), buffers = new WeakMap();
@@ -26,7 +27,11 @@ module.exports = function recordSounds() {
   const play = HTMLMediaElement.prototype.play;
   HTMLMediaElement.prototype.play = function(...args) {
     const result = play.apply(this,args);
-    if (this.src.endsWith(".wav")) result.then(()=>window.played.push(this.src.split("/").pop()),()=>{});
+    if (this.src.endsWith(".wav")) {
+      const name=this.src.split("/").pop();
+      window.mediaRequests.push(name);
+      result.then(()=>window.played.push(name),()=>{});
+    }
     return result;
   };
 };

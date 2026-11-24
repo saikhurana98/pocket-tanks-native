@@ -42,3 +42,5 @@ node tests/browser.cjs http://127.0.0.1:8213/
 ```
 
 The first test checks the shot crops against their current per-frame difference ceilings, the presentation-boundary blast masks, control pixels, the audible deal sequence, mid-deal reset and rock-sound cadence. The second exercises actual browser gameplay through rematch. CPU play, LAN, options, all weapon-specific effects and the remaining Deluxe weapons are outside these recordings.
+
+The Windows Playwright WebKit build exposes no Web Audio context. It requests the correct HTML audio files, but its play promises remained pending in this environment. Audible WebKit playback still needs verification on a device with an active audio backend.

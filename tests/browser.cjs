@@ -186,7 +186,12 @@ async function exercise(browser,touch){
       await click("#reset");
     }
     await tap(405,493);await status("Shot in flight");await status("Player 2");assert.notDeepEqual(await pixel(),initial);
-    await page.waitForFunction(()=>played.includes("cannon.wav")&&played.includes("expmedium2.wav"));
+    const mediaOnly=process.platform==="win32"&&browser.browserType().name()==="webkit"&&await page.evaluate(()=>!window.AudioContext);
+    await page.waitForFunction(requestsOnly=>{
+      const events=requestsOnly?window.mediaRequests:window.played;
+      return events.includes("cannon.wav")&&events.includes("expmedium2.wav");
+    },mediaOnly);
+    if(mediaOnly)console.log("Windows WebKit requested both HTML audio effects; speaker playback unverified");
     await tap(405,493);await status("Player 1");await click("#reset");assert.deepEqual(await pixel(),initial);
     await tap(248,490);await status("Moving");await status("Player 1");
     for(const [name,id] of [["3 Shot","#three"],["5 Shot","#five"],["Flash Blast","#weapon-9"]]){
