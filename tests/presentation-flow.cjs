@@ -44,11 +44,11 @@ async function verifyDraft(page) {
   await page.evaluate(require("./record-sounds.cjs"));
   await page.evaluate(async () => {
     window.dealFrames=[];
-    const {RangeDisplay}=await import("./presentation.mjs"),draw=RangeDisplay.prototype.draw;
-    RangeDisplay.prototype.draw=function(state,ui,t) {
+    const {RangeDisplay}=await import("./presentation.mjs"),shop=RangeDisplay.prototype.shop;
+    RangeDisplay.prototype.shop=function(state,ui) {
       const count=state.pool?.filter(w=>w!==null).length??0;
       if(window.dealFrames.at(-1)!==count)window.dealFrames.push(count);
-      return draw.call(this,state,ui,t);
+      return shop.call(this,state,ui);
     };
   });
   await page.locator("#newmatch").evaluate(b=>b.click());

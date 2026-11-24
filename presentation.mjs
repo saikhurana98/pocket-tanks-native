@@ -190,20 +190,22 @@ export class RangeDisplay {
       c.drawImage(this.art.arsenal,1,w*24,22,22,x,y,22,22);
       c.drawImage(this.art.arsenal,140,w*24,widths[w],23,x+25,y,widths[w],23);
     };
-    s.pool.forEach((w,i)=>{if(w!==null)item(w,262+158*Math.floor(i/10),124+(i%10)*27)});
+    s.pool?.forEach((w,i)=>{if(w!==null)item(w,262+158*Math.floor(i/10),124+(i%10)*27)});
     s.draft.forEach((row,player)=>row.forEach((w,j)=>item(w,28+player*605,124+j*27)));
     const active=(s.draft[0].length+s.draft[1].length)%2;
-    c.drawImage(this.art.match,275,90,55,31,active?565:177,190,55,31);
-    c.save();if(active){c.translate(800,0);c.scale(-1,1)}
-    c.drawImage(this.art.match,275,121,55,64,177,221,55,64);c.restore();
-    if(!s.autoDraft&&ui.hover==="random"){
+    if(!ui.finalShop){
+      c.drawImage(this.art.match,275,90,55,31,active?565:177,190,55,31);
+      c.save();if(active){c.translate(800,0);c.scale(-1,1)}
+      c.drawImage(this.art.match,275,121,55,64,177,221,55,64);c.restore();
+    }
+    if(!s.autoDraft&&!ui.finalShop&&ui.hover==="random"){
       c.drawImage(this.art.random,0,ui.pressed==="random"?54:27,85,27,362,410,85,27);
     }
-    if(ui.pointer)this.cursor(ui.pointer,!!ui.hover,s.autoDraft);
+    if(ui.pointer)this.cursor(ui.pointer,!!ui.hover,s.autoDraft||ui.finalShop);
   }
   draw(s,ui,t){
     const c=this.ctx;
-    if(s.pool){this.shop(s,ui);return}
+    if(s.pool||ui.finalShop){this.shop(s,ui);return}
     c.drawImage(this.art.range,0,450,800,150,0,450,800,150);
     c.drawImage(this.ground,0,0);
     if(s.turn===1){c.drawImage(this.art.second,0,1,800,150,0,450,800,150);c.drawImage(this.art.second,0,0,800,1,0,31,800,1)}

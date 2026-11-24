@@ -61,6 +61,7 @@ function finishAdjust(){
 function sync(){
   let status=ui.ended?"Game ended":s.move?"Moving":s.ball||s.jumpSettling||s.cutters.length?"Shot in flight":s.inVolley?"Impact":"Player "+(s.turn+1)+" · Ready to fire";
   if(s.pool)status="Weapon shop · Player "+((s.draft[0].length+s.draft[1].length)%2+1)+" picks";
+  else if(ui.finalShop)status="Weapon shop · Deal complete";
   else if(s.finished){
     const [a,b]=s.scores;status="Game over · "+(a===b?"Tie":"Player "+(a>b?1:2)+" wins")+" · "+a+" to "+b;
   }else if(s.mode==="match")status+=" · Volley "+Math.min(volleys,Math.floor((s.shots-(s.inVolley?1:0))/2)+1)+" · Score "+s.scores.join(" to ");
@@ -73,7 +74,8 @@ function sync(){
     const id=button.id;
     const slot=id.startsWith("pick-")?Number(id.slice(5)):-1;
     const stock=weaponButtons.indexOf(id);
-    if(slot>=0||id==="random"){
+    if(ui.finalShop)button.hidden=true;
+    else if(slot>=0||id==="random"){
       button.hidden=!s.pool||(slot>=0&&s.pool[slot]===null);
       if(slot>=0&&!button.hidden)button.setAttribute("aria-label","Draft "+weapons[s.pool[slot]].name);
     }
@@ -106,7 +108,7 @@ function reset(mode=s?.mode||"practice"){
   display.bind(s);
   if(mode==="match")openShop(s);
   Object.assign(ui,{angles:s.tanks.map(p=>wrap(360-p[3])),powers:s.tanks.map(p=>p[4]),turnTime:performance.now(),
-    hover:null,pressed:null,mode:null,dialog:false,ended:false});
+    hover:null,pressed:null,mode:null,dialog:false,ended:false,finalShop:null});
   $("loading").hidden=true;$("loading").setAttribute("role","status");$("loading").removeAttribute("tabindex");
   display.reset(range,mode);sync();display.draw(s,ui,ui.turnTime);
   $("reset").textContent=mode==="match"?"Restart match":"Reset range";
@@ -152,11 +154,12 @@ function slide(p){
   sync();
 }
 function action(id,p){
-  if(ui.ended)return;
+  if(ui.ended||ui.finalShop)return;
   if(s.pool){
     if(s.autoDraft)return;
     if(id==="random"){s.autoDraft=true;effect("crick.wav")}
     else if(id?.startsWith("pick-")&&pickWeapon(s,Number(id.slice(5))))effect("crick.wav");
+    if(!s.pool)ui.finalShop="pending";
     sync();return;
   }
   if(s.finished){
@@ -291,15 +294,17 @@ document.addEventListener("keydown",e=>{
 });
 function frame(t){
   const dt=clock===undefined?0:Math.min(.1,(t-clock)/1000);clock=t;
+  if(ui.finalShop==="shown"){ui.finalShop=null;ui.turnTime=t;sync()}
   if(!ui.dialog&&!ui.ended){
     lag+=dt;while(lag>=DT){
       const ball=s.ball,active=s.inVolley,moving=s.move,turn=s.turn,score=s.scores[s.turn];
-      if(advanceDraft(s,DT)){ui.turnTime=t;sync()}
+      if(advanceDraft(s,DT)){if(!s.pool)ui.finalShop="pending";ui.turnTime=t;sync()}
       step(s);
       if(turn!==s.turn||moving&&!s.move||active!==s.inVolley||ball&&!s.ball||score!==s.scores[turn]){ui.turnTime=t;sync()}
       lag-=DT;
     }
     display.draw(s,ui,t);
+    if(ui.finalShop==="pending")ui.finalShop="shown";
   }else if(ui.dialog)display.draw(s,ui,t);
   requestAnimationFrame(frame);
 }
