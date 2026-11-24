@@ -1,46 +1,132 @@
-// Set PLAYWRIGHT_MODULE and EDGE_PATH for a locally installed Playwright and Edge.
 const assert=require("node:assert/strict");
-const {chromium}=require(process.env.PLAYWRIGHT_MODULE || "playwright-core");
+const playwright=require(process.env.PLAYWRIGHT_MODULE||"playwright-core");
+const golden=require("./captures/presentation.json");
+const matchGolden=require("./captures/match-presentation.json");
 const url=process.argv[2];
-if(!url) throw Error("Pass the HTTP URL of the native practice range");
-(async()=>{
-  for(const touch of [false,true]){
-    const browser=await chromium.launch({executablePath:process.env.EDGE_PATH,args:touch?["--disable-gpu","--disable-webgl"]:[]});
-    try{
-      const page=await browser.newPage({viewport:touch?{width:390,height:750}:{width:1200,height:850},hasTouch:touch,isMobile:touch});
-      await page.addInitScript(()=>{
-        window.playedEffects=[];
-        const start=AudioBufferSourceNode.prototype.start;
-        AudioBufferSourceNode.prototype.start=function(...args){
-          window.playedEffects.push(this.buffer?.duration);
-          return start.apply(this,args);
-        };
-      });
-      const errors=[];page.on("pageerror",e=>errors.push(e.message));
-      const responses=[];page.on("response",r=>responses.push([r.status(),r.url()]));
-      await page.goto(url);
-      const click=id=>touch?page.locator(id).tap():page.locator(id).click();
-      await page.waitForFunction(()=>document.querySelector("#status").textContent.startsWith("Player 1"));
-      const pixel=()=>page.locator("canvas").evaluate(c=>Array.from(c.getContext("2d").getImageData(308,282,1,1).data));
-      const before=await pixel();
-      await click("#fire");assert(await page.locator("#fire").isDisabled());
-      await page.waitForFunction(()=>document.querySelector("#status").textContent.startsWith("Player 2"));
-      const after=await pixel();assert.notDeepEqual(before,after);
-      const effects=await page.evaluate(()=>window.playedEffects);
-      assert.equal(effects.length,2);assert(effects.every(duration=>duration>0));
+if(!url)throw Error("Pass the native Target Practice URL");
 
-      assert.equal(await page.locator("#angle").inputValue(),"120");
-      await page.locator("#angle").fill("90");await page.locator("#power").fill("72");
-      await click("#fire");await page.waitForFunction(()=>document.querySelector("#status").textContent.startsWith("Player 1"));
-      assert.equal(await page.locator("#count").textContent(),"2 shots");
-      await click("#reset");assert.deepEqual(await pixel(),before);
-      await click("#sound");assert.equal(await page.locator("#sound").getAttribute("aria-pressed"),"false");
-      await click("#full");await page.waitForFunction(()=>document.fullscreenElement || document.querySelector(".expanded"));
-      await click("#full");await page.waitForFunction(()=>!document.fullscreenElement && !document.querySelector(".expanded"));
-      assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
-      assert.deepEqual(errors,[]);assert(!responses.some(([s,u])=>s>=400||/\.(exe|dll)(\?|$)/.test(u)));
-      assert(responses.some(([status,u])=>status===200 && u.endsWith("/engine/single-shot.wasm")));
-      console.log("PASS",touch?"390px touch / GPU disabled":"desktop", "fire, crater, both effect buffers, alternate turn, angle, power, reset, mute, fullscreen");
-    }finally{await browser.close()}
+async function pixelParity(page){
+  const results=await page.evaluate(async gold=>{
+    const {RangeDisplay,loadArt}=await import("./presentation.mjs");
+    const {loadEngine,setup,launch,step,groundPose}=await import("./sim.mjs");
+    const canvas=document.createElement("canvas");canvas.width=800;canvas.height=600;
+    const scene=await(await fetch("range.json")).json(),art=await loadArt();
+    const display=new RangeDisplay(canvas,art,scene),s=setup(await loadEngine(),scene);
+    const ui={angles:[60,120],powers:[20,20],turnTime:0,pointer:{x:799,y:599}};
+    const digest=async pixels=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",pixels)),x=>x.toString(16).padStart(2,"0")).join("");
+    const frame=async()=>{display.draw(s,ui,0);return digest(display.ctx.getImageData(0,0,800,600).data)};
+    const poses=gold.groundPoses.map(([x])=>groundPose(s,x));
+    const initial=await frame();launch(s,60,20);
+    for(let i=0;i<1000&&s.turn===0;i++){
+      const impact=s.impact,revision=s.revision;step(s);
+      if(impact&&revision!==s.revision)display.updateGround(s,impact.x);
+      if(impact&&!s.impact)display.updateGround(s,impact.x,true);
+    }
+    const after=await frame();
+    const fx=document.createElement("canvas");fx.width=46;fx.height=46;const g=fx.getContext("2d",{willReadFrequently:true});
+    const blasts=[];
+    for(const {phase} of gold.blast){
+      g.clearRect(0,0,46,46);g.drawImage(art.images.blast,phase%8*46,Math.floor(phase/8)*46,46,46,0,0,46,46);
+      blasts.push(await digest(g.getImageData(0,0,46,46).data));
+    }
+    return {frames:[initial,after],blasts,poses};
+  },golden);
+  assert.deepEqual(results.frames,golden.frames,"Original framebuffer RGBA mismatch");
+  assert.deepEqual(results.blasts,golden.blast.map(f=>f.sha256),"Explosion pixels differ");
+  for(const [i,actual] of results.poses.entries()){
+    const expected=golden.groundPoses[i];assert.deepEqual(actual.slice(0,2),expected.slice(0,2));assert(Math.abs(actual[2]-expected[2])<1e-10);
   }
-})().catch(e=>{console.error(e);process.exitCode=1});
+  console.log("PASS two complete 800 x 600 original frames, "+results.blasts.length+" captured blast images, "+results.poses.length+" terrain poses");
+  const match=await page.evaluate(async gold=>{
+    const {RangeDisplay,loadArt}=await import("./presentation.mjs");
+    const {setup,loadEngine}=await import("./sim.mjs");
+    const scene=await(await fetch("./match-range.json")).json(),art=await loadArt();
+    const s=setup(await loadEngine(),scene,"match"),board=document.createElement("canvas");
+    board.width=800;board.height=600;
+    const display=new RangeDisplay(board,art,scene);display.reset(scene,"match");
+    display.draw(s,{angles:s.tanks.map(t=>360-t[3]),powers:s.tanks.map(t=>t[4]),turnTime:0},0);
+    const g=board.getContext("2d"),field=g.getImageData(0,0,800,450).data,[x,y]=s.tanks[s.turn];
+    for(let j=y-100;j<y-20;j++)field.fill(0,(j*800+x-20)*4,(j*800+x+20)*4);
+    const hash=async bytes=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",bytes)),v=>v.toString(16).padStart(2,"0")).join("");
+    const matchField=await hash(field),fx=document.createElement("canvas");fx.width=fx.height=102;
+    const ctx=fx.getContext("2d",{willReadFrequently:true}),blast=[];
+    for(const {phase} of gold.blast){
+      ctx.clearRect(0,0,102,102);
+      ctx.drawImage(art.images["big-blast"],phase%8*102,Math.floor(phase/8)*102,102,102,0,0,102,102);
+      blast.push(await hash(ctx.getImageData(0,0,102,102).data));
+    }
+    return {matchField,blast};
+  },matchGolden);
+  assert.equal(match.matchField,matchGolden.matchField,"Two-player opening field differs from original");
+  assert.deepEqual(match.blast,matchGolden.blast.map(f=>f.sha256));
+  console.log("PASS original two-player field and "+match.blast.length+" captured Big Shot blast frames");
+}
+
+async function exercise(browser,touch){
+  const page=await browser.newPage({viewport:touch?{width:390,height:750}:{width:1366,height:768},isMobile:touch,hasTouch:touch});
+  try{
+    const errors=[],requests=[];page.on("pageerror",e=>errors.push(e.message));page.on("response",r=>requests.push([r.status(),r.url()]));
+    await page.addInitScript(()=>{window.fx=[];const start=AudioBufferSourceNode.prototype.start;AudioBufferSourceNode.prototype.start=function(...args){window.fx.push(this.buffer?.duration);return start.apply(this,args)}});
+    await page.goto(url);await page.waitForFunction(()=>document.querySelector("#status").textContent.startsWith("Player 1"));
+    if(!touch)await pixelParity(page);
+    const screen=page.locator("#board");
+    const xy=async(x,y)=>{const r=await screen.boundingBox();return [r.x+x*r.width/800,r.y+y*r.height/600]};
+    const tap=async(x,y)=>{const [cx,cy]=await xy(x,y);if(touch)await page.touchscreen.tap(cx,cy);else await page.mouse.click(cx,cy)};
+    const click=async id=>touch?page.locator(id).tap():page.locator(id).click();
+    const status=prefix=>page.waitForFunction(v=>document.querySelector("#status").textContent.startsWith(v),prefix);
+    const pixel=()=>page.locator("canvas").evaluate(c=>Array.from(c.getContext("2d").getImageData(153,216,1,1).data));
+    const initial=await pixel();
+    for(const stretched of [false,true]){
+      if(stretched)await click("#size");
+      const r=await screen.boundingBox();assert(stretched?Math.abs(r.width/r.height-4/3)>.2:Math.abs(r.width/r.height-4/3)<.01);
+      await tap(552,506);assert.equal(await page.locator("#angle").getAttribute("aria-label"),"Adjust aim, 59 degrees");
+      await tap(493,505);await tap(552,574);assert.equal(await page.locator("#power").getAttribute("aria-label"),"Adjust power, 21");
+      await tap(493,574);
+    }
+    if(!touch){
+      for(const [x,y,control,expected] of [[520,482,"angle","Adjust aim, 55 degrees"],[497,548,"power","Adjust power, 25"]]){
+        await tap(x,y);await page.mouse.move(...await xy(x+20,y+30));await page.mouse.click(...await xy(x+20,y+30));
+        assert.equal(await page.locator("#"+control).getAttribute("aria-label"),expected);
+      }
+      await click("#reset");
+    }
+    await tap(405,493);await status("Shot in flight");await status("Player 2");assert.notDeepEqual(await pixel(),initial);
+    await page.waitForFunction(()=>window.fx.length>=2);assert((await page.evaluate(()=>window.fx)).every(v=>v>0));
+    await tap(405,493);await status("Player 1");await click("#reset");assert.deepEqual(await pixel(),initial);
+    await tap(248,490);await status("Moving");await status("Player 1");
+    await tap(311,566);assert(await page.locator("#choose").isVisible());await tap(310,471);
+    await click("#full");await page.waitForFunction(()=>document.fullscreenElement||document.querySelector(".expanded"));
+    await tap(552,574);assert.equal(await page.locator("#power").getAttribute("aria-label"),"Adjust power, 21");
+    await tap(770,590);assert(await page.locator("#no").isVisible());await click("#full");await tap(440,288);
+    await click("#sound");assert.equal(await page.locator("#sound").getAttribute("aria-pressed"),"false");
+    await click("#newmatch");await status("Weapon shop · Player 1");
+    await tap(300,135);await status("Weapon shop · Player 2");
+    assert(await page.locator("#pick-0").isHidden());
+    await tap(300,162);await status("Weapon shop · Player 1");await tap(402,423);
+    await status("Player 1");
+    await page.locator("#power").focus();
+    for(let p=20;p<57;p++)await page.keyboard.press("ArrowUp");
+    assert.equal(await page.locator("#power").getAttribute("aria-label"),"Adjust power, 57");
+    for(let n=0;n<20;n++){
+      const ready=await page.locator("#status").textContent();
+      assert(ready.includes("Volley "+(1+Math.floor(n/2))+" ·"),ready);
+      assert.match(await page.locator("#fire").getAttribute("aria-label"),/^Fire (Single Shot|Big Shot)$/);
+      await tap(405,493);
+      await status("Shot in flight");
+      await status(n===19?"Game over":"Player "+(n%2===0?2:1));
+      if(n===0)assert.match(await page.locator("#status").textContent(),/Score 60 to 0$/);
+    }
+    assert(await page.locator("#fire").isHidden());
+    await tap(320,253);await status("Weapon shop");await tap(402,423);await status("Player 1");
+    await click("#practice");await status("Player 1");
+    assert.equal(await page.locator("#fire").getAttribute("aria-label"),"Fire Single Shot");
+    console.log("PASS original ten-volley match, manual and random draft, both weapons, game over, rematch and return to practice");
+    assert.deepEqual(errors,[]);assert(!requests.some(([s,u])=>s>=400||/\.(exe|dll)(\?|$)|boxedwine/i.test(u)));
+    console.log("PASS "+(touch?"touch / GPU disabled":"desktop")+" fitted and stretched pointer mapping, turns, blast, movement, audio, weapon menu, fullscreen and reset");
+  }finally{await page.close()}
+}
+const browserName=process.argv[3]||"chromium";
+(async()=>{for(const touch of browserName==="chromium"?[false,true]:[false]){
+  const browser=await playwright[browserName].launch(browserName==="chromium"?{executablePath:process.env.EDGE_PATH,args:touch?["--disable-gpu","--disable-webgl"]:[]}:{});
+  try{await exercise(browser,touch)}finally{await browser.close()}
+}})().catch(e=>{console.error(e);process.exitCode=1});

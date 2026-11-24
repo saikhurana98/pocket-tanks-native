@@ -76,6 +76,48 @@
       (br_if $octant (i32.le_s (local.get $i) (local.get $j)))))
   (global $blastAge (mut f64) (f64.const 0))
   (global $phase (mut i32) (i32.const 0))
+  (global $radius (mut i32) (i32.const 22))
+  ;; Convex polygon test at 0x433d60. Edge coordinates count as hits.
+  (func (export "insideHull") (param $x i32) (param $y i32) (param $base i32) (param $count i32) (result i32)
+    (local $node i32) (local $next i32) (local $end i32) (local $ax i32) (local $ay i32)
+    (local.set $node (local.get $base))
+    (local.set $end (i32.add (local.get $base) (i32.shl (local.get $count) (i32.const 3))))
+    (loop $edge
+      (local.set $next (i32.add (local.get $node) (i32.const 8)))
+      (if (i32.eq (local.get $next) (local.get $end)) (then (local.set $next (local.get $base))))
+      (local.set $ax (i32.load (local.get $node)))
+      (local.set $ay (i32.load offset=4 (local.get $node)))
+      (if (i32.gt_s (i32.add
+        (i32.mul (i32.sub (i32.load offset=4 (local.get $next)) (local.get $ay)) (i32.sub (local.get $x) (local.get $ax)))
+        (i32.mul (i32.sub (local.get $ax) (i32.load (local.get $next))) (i32.sub (local.get $y) (local.get $ay)))) (i32.const 0))
+        (then (return (i32.const 0))))
+      (local.set $node (local.get $next))
+      (br_if $edge (i32.ne (local.get $node) (local.get $base))))
+    (i32.const 1))
+  (func (export "setBlastRadius") (param $size i32)
+    (global.set $radius (local.get $size)))
+  ;; 0x44c40a..0x44c465 and 0x44c595..0x44c5bf. The integer conversion
+  ;; occurs separately on each coordinate and again after the square root.
+  (func (export "blastDamage") (param $cx f64) (param $cy f64)
+    (param $tankX f64) (param $tankY f64) (param $front i32) (param $damage i32) (result i32)
+    (local $dx f64) (local $dy f64) (local $distance i32) (local $outside i32)
+    (local.set $dx (f64.sub (f64.trunc (local.get $cx)) (f64.trunc (local.get $tankX))))
+    (local.set $dy (f64.sub (f64.trunc (local.get $cy)) (f64.trunc (local.get $tankY))))
+    (local.set $distance (i32.trunc_f64_s (f64.sqrt (f64.add
+      (f64.mul (local.get $dx) (local.get $dx)) (f64.mul (local.get $dy) (local.get $dy))))))
+    (if (i32.gt_s (i32.sub (local.get $distance) (i32.const 14)) (local.get $front))
+      (then (return (i32.const 0))))
+    (local.set $outside (i32.sub (local.get $distance) (i32.const 15)))
+    (if (i32.lt_s (local.get $outside) (i32.const 0)) (then (local.set $outside (i32.const 0))))
+    (i32.div_s (i32.mul (i32.sub (global.get $radius) (local.get $outside)) (local.get $damage)) (global.get $radius)))
+  ;; 0x4419f0..0x441a2d. Positive hits on the firing tank subtract from
+  ;; the active player's score and the result is bounded at zero.
+  (func (export "scoreHit") (param $score i32) (param $points i32) (param $self i32) (result i32)
+    (local $sum i32)
+    (if (i32.le_s (local.get $points) (i32.const 0)) (then (return (local.get $score))))
+    (local.set $sum (i32.add (local.get $score) (select (i32.sub (i32.const 0) (local.get $points))
+      (local.get $points) (local.get $self))))
+    (select (local.get $sum) (i32.const 0) (i32.gt_s (local.get $sum) (i32.const 0))))
   (func (export "beginBlast")
     (global.set $blastAge (f64.const 0)) (global.set $phase (i32.const 0)))
   (func (export "blastStep") (param $dt f64) (result i32)
@@ -85,7 +127,7 @@
     ;; outline one pixel to the right (0x44c049 and 0x44c07a).
     (if (f64.gt (global.get $blastAge) (f64.const 0.02)) (then
       (global.set $blastAge (f64.sub (global.get $blastAge) (f64.const 0.02)))
-      (if (i32.lt_s (global.get $phase) (i32.const 21)) (then
+      (if (i32.lt_s (global.get $phase) (i32.sub (global.get $radius) (i32.const 1))) (then
         (local.set $cx (i32.trunc_f64_s (global.get $x)))
         (local.set $cy (i32.trunc_f64_s (global.get $y)))
         (call $ring (local.get $cx) (local.get $cy) (global.get $phase))

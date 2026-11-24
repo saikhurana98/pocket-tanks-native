@@ -1,1 +1,26 @@
-*{box-sizing:border-box}html{color-scheme:dark}body{margin:0;background:#101617;color:#eef2e9;font:16px "Segoe UI",sans-serif}main{max-width:1040px;margin:auto;padding:24px clamp(12px,4vw,48px)}header,nav,.heading,.score,.controls,footer{display:flex;align-items:center;justify-content:space-between;gap:16px}header{padding-bottom:18px;border-bottom:1px solid #394344;font-size:15px;font-weight:800;letter-spacing:.14em}.mark{color:#ccf465;font-size:25px;vertical-align:middle}button{background:#20292b;color:inherit;border:1px solid #475151;border-radius:6px;padding:9px 14px;cursor:pointer;font:inherit}button:hover{border-color:#c4dcac}button:disabled{opacity:.6}nav{gap:8px;font-weight:500;letter-spacing:0}.heading{margin:24px 0 16px}h1{font-size:clamp(28px,5vw,48px);line-height:1;margin:0;letter-spacing:-.055em}.heading button,nav button{font-size:13px}.range{position:relative;border:1px solid #435345;border-radius:10px;overflow:hidden}.score{position:absolute;inset:14px 18px auto;pointer-events:none;font:600 12px Consolas,monospace;letter-spacing:.08em}.score span{display:flex;align-items:center;gap:9px}.score i{background:#fa7765;width:7px;height:7px;border-radius:50%}.score span+span i{background:#f6c04c}canvas{width:100%;display:block;image-rendering:pixelated}.controls{margin-top:12px;padding:18px;background:#202828;border:1px solid #3b4745;border-radius:9px;gap:24px}.weapon{display:grid;gap:4px}small,footer{font:12px Consolas,monospace;letter-spacing:.06em;color:#adbbb5}label{flex:1;max-width:210px;font-size:14px}output{float:right;font-family:Consolas,monospace}input{display:block;width:100%;accent-color:#c9ed77;margin:10px 0 0}#fire{background:#d1f685;color:#182016;font-weight:750;padding:13px 24px}footer{margin:15px 3px}main:fullscreen,main.expanded{background:#101617;max-width:none;overflow:auto;padding:10px max(12px,calc((100vw - 140vh)/2))}main.expanded{position:fixed;inset:0;z-index:1}@media(max-width:620px){.controls{display:grid;grid-template-columns:1fr 1fr;gap:16px}.weapon{grid-column:1}.controls label{max-width:none}.score{font-size:10px;inset:8px 8px auto}nav{gap:3px}header{font-size:12px;gap:3px}nav button{padding:7px}.heading{margin:18px 0 12px}}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;background:#000;color:#eee;font:14px system-ui,sans-serif}
+main{height:100%;height:100dvh;display:grid;grid-template-rows:minmax(0,1fr) auto;background:#000}
+#screen{min-height:0;min-width:0;display:grid;place-items:center;container-type:size;overflow:hidden}
+#board{position:relative;width:min(100cqw,133.333333cqh);aspect-ratio:4/3;outline:none;touch-action:none;user-select:none;cursor:none}
+main.stretched #board{width:100%;height:100%;aspect-ratio:auto}
+canvas,#targets{display:block;position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated}
+#targets button{position:absolute;appearance:none;border:0;background:transparent;margin:0;padding:0;cursor:inherit;color:transparent}
+#targets button:focus-visible{outline:2px solid white;outline-offset:-2px}
+
+
+
+#loading{position:absolute;inset:0;display:grid;place-items:center;background:#000}
+#loading[hidden]{display:none}
+nav{display:flex;align-items:center;justify-content:center;gap:12px;padding:4px max(6px,env(safe-area-inset-right)) max(4px,env(safe-area-inset-bottom));background:#0b0b0b}
+nav button{border:0;background:transparent;color:#bbb;font:inherit;padding:5px 7px;cursor:pointer}
+nav button:focus-visible,nav button:hover{color:white}
+@media(max-width:580px){nav{flex-wrap:wrap;gap:0 6px}nav button{min-height:32px}}
+main:fullscreen,main.expanded{width:100vw;height:100dvh}
+main.expanded{position:fixed;inset:0;z-index:10}
+main:fullscreen,main.expanded{grid-template-rows:minmax(0,1fr)}
+main:fullscreen nav,main.expanded nav{position:absolute;top:0;right:0;opacity:0;transition:opacity .15s}
+main:fullscreen nav:hover,main:fullscreen nav:focus-within,main.expanded nav:hover,main.expanded nav:focus-within{opacity:1}
+main:fullscreen:not(.tools) nav,main.expanded:not(.tools) nav{pointer-events:none}
+main.tools nav{opacity:1;pointer-events:auto}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
