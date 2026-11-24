@@ -1,4 +1,5 @@
-import {weapons,volleys,prepareColliders,hitsTank,applyBlast} from "./match.mjs";
+import {weapons,volleys,roll,prepareColliders,hitsTank,applyBlast} from "./match.mjs";
+import {outsideContact} from "./contour.mjs";
 import {queueDirt,advanceDirt} from "./soil.mjs";
 export const W=800, H=450, DT=.004;
 
@@ -17,8 +18,8 @@ export function setup(engine,scene,mode="practice") {
   }
   if(offset!==W*H)throw Error("Incomplete terrain");
   return {engine,solid,tanks:scene.tanks.map(p=>p.slice()),turn:scene.turn,shots:0,move:null,revision:0,
-    balls:[],blasts:[],get ball(){return this.balls[0]},get impact(){return this.blasts[0]},
-    mode,scores:[0,0],ammo:[[3,3,2,2],[3,3,2,2]],moves:mode==="match"?[4,4]:[99,99],
+    seed:scene.seed??crypto.getRandomValues(new Uint32Array(1))[0],pending:[],tick:0,balls:[],blasts:[],markers:[],get ball(){return this.balls[0]},get impact(){return this.blasts[0]},
+    mode,scores:[0,0],ammo:scene.tanks.map(()=>weapons.map(()=>2)),moves:mode==="match"?[4,4]:[99,99],
     selected:[0,0],weapon:0,finished:false,airborne:[null,null],craters:[],dirt:new Map(),dirtAge:0,inVolley:false};
 }
 export function floorAt(s,x,startY=0) {
@@ -39,13 +40,58 @@ export function launch(s,angle,power) {
   s.tanks[s.turn][3]=direction;
   s.colliders=prepareColliders(s);
   const weapon=weapons[s.weapon],ox=e.muzzleX(x,slope,direction),oy=e.muzzleY(y,slope,direction);
-  e.setBlastRadius(weapon.radius);
-  for(const offset of weapon.spread){
-    e.launch(ox,oy,direction+offset,power);
-    s.balls.push({x:ox,y:oy,vx:e.vx.value,vy:e.vy.value,trail:[]});
-  }
+  s.tick=-1;
+  queueTrigger(s,weapon.entry,ox,oy,direction,power);
+  releaseDue(s);
   s.shots++;s.inVolley=true;
   return true;
+}
+function applyExpression(s,previous,initial,expression){
+  if(!expression)return previous;
+  let v=previous;
+  const tokens=expression.split(/\s+/);
+  for(let i=0;i<tokens.length;i++){
+    const op=tokens[i];
+    if(op==="RESET")v=initial;
+    else if(op==="RND"){
+      const bound=Math.trunc(Number(tokens[++i]));
+      if(bound)v+=roll(s,bound);
+    }
+    else if(op==="SET")v=Math.fround(Number(tokens[++i]));
+    else if(op==="+")v+=Math.fround(Number(tokens[++i]));
+    else if(op==="-")v-=Math.fround(Number(tokens[++i]));
+    else throw Error("Unknown trigger operation "+op);
+  }
+  return v;
+}
+function queueTrigger(s,name,x,y,angle,power){
+  const program=weapons[s.weapon],base={xoffset:x,yoffset:y,angle,power},values={...base};
+  let elapsed=0;
+  for(const command of program.triggers[name]){
+    elapsed+=command.delay;
+    s.pending.push({tick:s.tick+Math.ceil(elapsed/4),actor:program.actors[command.actor],base,values,command});
+  }
+}
+function releaseDue(s){
+  s.pending=s.pending.filter(command=>{
+    if(command.tick>s.tick)return true;
+    const {actor,base,values,command:definition}=command,e=s.engine;
+    for(const key of Object.keys(base))values[key]=applyExpression(s,values[key],base[key],definition[key]);
+    const {xoffset:x,yoffset:y,angle,power}=values;
+    if(definition.sound)s.onSound?.(definition.sound);
+    if(actor.sound)s.onSound?.(actor.sound);
+    if(actor.type==="bullet"){
+      e.launch(x,y,angle,power);
+      const ball={actor,frame:0,frameTime:0,age:0,fresh:true,x,y,vx:e.vx.value,vy:e.vy.value,trail:[]};
+      s.balls.push(ball);
+    }else if(actor.type==="marker"){
+      const marker={x,y,actor,age:0};s.markers.push(marker);s.onMarker?.(marker);
+    }else{
+      s.blasts.push({actor,x,y,phase:0,age:0,struck:[false,false]});
+      if(actor.erase)addCrater(s,x,actor.radius);
+    }
+    return false;
+  });
 }
 export function moveTank(s,direction) {
   if(s.inVolley||s.move||s.finished||s.pool||!s.moves[s.turn])return false;
@@ -105,33 +151,53 @@ export function step(s) {
     return;
   }
   if(!s.inVolley)return;
-  const weapon=weapons[s.weapon],newBlasts=[];
+  s.tick++;
   s.balls=s.balls.filter(ball=>{
     e.x.value=ball.x;e.y.value=ball.y;e.vx.value=ball.vx;e.vy.value=ball.vy;
+    e.setFlightMode(ball.actor.gravity,Number(ball.actor.hitAir),Number(ball.fresh));
+    ball.fresh=false;
+    const [targetX,targetY]=s.tanks[1-s.turn];
+    e.dropTarget(ball.actor.dropSound?targetX:-9999);
+    e.proximityTarget(targetX,targetY,ball.actor.distance??0);
+    e.homing(ball.actor.homingRange??0,ball.actor.homingMagnitude??0);
     const event=e.step(DT,0);
+    ball.age+=DT;
+    if(e.dropping.value&&!ball.dropped){s.onSound?.(ball.actor.dropSound);ball.dropped=true}
     ball.x=e.x.value;ball.y=e.y.value;ball.vx=e.vx.value;ball.vy=e.vy.value;
+    if(e.approach.value)queueTrigger(s,ball.actor.onApproach,e.approachX.value,e.approachY.value,e.approachAngle.value,e.approachPower.value);
     if(event===2)return false;
-    if(event===1||hitsTank(s,ball.x,ball.y)){
-      newBlasts.push({x:ball.x,y:ball.y,phase:0,age:0,struck:[false,false]});
-      addCrater(s,ball.x,weapon.radius);s.onContact?.();return false;
+    if(event===1&&ball.actor.outside&&ball.y!==449)outsideContact(s,ball);
+    const timer=ball.actor.onTimer&&ball.age>=ball.actor.time;
+    if(timer||event===1||hitsTank(s,ball.x,ball.y)){
+      queueTrigger(s,timer?ball.actor.onTimer:ball.actor.onImpact,ball.x,ball.y,e.impactAngle(),e.impactPower());
+      return false;
+    }
+    if(e.approach.value)return false;
+    if(ball.actor.animation){
+      const {speed,frames}=ball.actor.animation;
+      ball.frameTime+=DT;
+      while(speed>0&&ball.frameTime>1/speed){ball.frameTime-=1/speed;ball.frame=(ball.frame+1)%frames.length}
     }
     ball.trail.push([ball.x,ball.y]);
     if(ball.trail.length>45)ball.trail.shift();
     return true;
   });
   s.blasts=s.blasts.filter(blast=>{
+    const weapon=blast.actor;
+    e.setBlastRadius(weapon.radius);e.setTerrainErase(Number(weapon.erase));
     e.x.value=blast.x;e.y.value=blast.y;e.blastAge.value=blast.age;e.phase.value=blast.phase;
     const before=blast.phase;blast.phase=e.blastStep(DT);blast.age=e.blastAge.value;
-    const eroded=before!==blast.phase&&blast.phase<weapon.radius;
+    const eroded=weapon.erase&&before!==blast.phase&&blast.phase<weapon.radius;
     if(eroded)s.revision++;
     if(before!==blast.phase)applyBlast(s,blast);
     s.onBlastStep?.(blast,eroded);
-    const active=blast.phase<weapon.radius+weapon.colorLength-1;
-    if(!active)queueDirt(s,blast,weapon.radius);
+    const active=blast.phase<weapon.radius+weapon.eraseDelay+1;
+    if(!active&&weapon.dirt)queueDirt(s,blast,weapon.radius);
     return active;
   });
-  s.blasts.push(...newBlasts);
+  s.markers=s.markers.filter(m=>{m.age+=DT;return m.age<m.actor.seconds});
+  releaseDue(s);
   advanceDirt(s,DT);
   if(s.airborne.some(Boolean)){moveAirborne(s);s.colliders=prepareColliders(s)}
-  if(!s.ball&&!s.impact&&!s.dirt.size&&!s.airborne.some(Boolean))endTurn(s);
+  if(!s.ball&&!s.impact&&!s.pending.length&&!s.markers.length&&!s.dirt.size&&!s.airborne.some(Boolean))endTurn(s);
 }

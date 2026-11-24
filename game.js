@@ -1,30 +1,35 @@
 import {DT,loadEngine,setup,launch,moveTank,step} from "./sim.mjs";
 import {RangeDisplay,loadArt} from "./presentation.mjs";
-import {weapons,openShop,pickWeapon,randomDraft,volleys} from "./match.mjs";
+import {weapons,inventory,openShop,pickWeapon,randomDraft,volleys} from "./match.mjs";
 
 const $=id=>document.getElementById(id);
 const main=document.querySelector("main"),board=$("board");
 const clamp=(n,lo,hi)=>Math.max(lo,Math.min(hi,n));
 const wrap=n=>(n%360+360)%360;
-const weaponButtons=["choose","big","three","five"];
+const weaponButtons=weapons.map((w,i)=>["choose","big","three","five"][i]??"weapon-"+i);
 const labels={angleleft:"Increase angle",angleright:"Decrease angle",powerleft:"Decrease power",powerright:"Increase power",
   moveleft:"Move tank left",moveright:"Move tank right",angle:"Adjust aim",power:"Adjust power",move:"Select movement direction",
   fire:"Fire Single Shot",weapon:"Choose weapon",weaponup:"Previous weapon",weapondown:"Next weapon",
   exit:"End game",yes:"End game",no:"Continue playing",random:"Random weapons"};
 const ui={hover:null,pressed:null,mode:null,dialog:false,ended:false,turnTime:0};
-let engine,scene,matchScene,display,s,clock,lag=0,hold,gesture,adjust,lastPoint,sound=true,context,sounds;
+let engine,scene,matchScene,display,s,clock,lag=0,hold,gesture,adjust,lastPoint,sound=true,context;
 const music=new Audio();music.preload="none";music.loop=true;music.volume=.4;
-const effects=["cannon","expmedium2","expmedium"].map(name=>"./audio/"+name+".wav");
-const mediaVoices=effects.map(()=>[]);
+const sounds=new Map(),mediaVoices=new Map();
+function loadSound(file){
+  if(!sounds.has(file)){
+    sounds.set(file,fetch("./audio/"+file).then(r=>{
+      if(!r.ok)throw Error(file);
+      return r.arrayBuffer();
+    }).then(bytes=>context.decodeAudioData(bytes)).catch(()=>null));
+  }
+  return sounds.get(file);
+}
 function unlockAudio(){
   if(!sound)return;
   if(!music.getAttribute("src"))music.src="./audio/ingame.mp3";
   if(window.AudioContext){
     context??=new AudioContext();
-    sounds??=Promise.all(effects.map(async url=>{
-      const r=await fetch(url);if(!r.ok)throw Error(url);
-      return context.decodeAudioData(await r.arrayBuffer());
-    })).catch(()=>null);
+    loadSound("cannon.wav");
     context.resume().catch(()=>{});
   }
   music.play().catch(()=>{});
@@ -32,16 +37,17 @@ function unlockAudio(){
 async function effect(which){
   if(!sound)return;
   if(context?.state==="running"){
-    const buffers=await sounds;
+    const buffer=await loadSound(which);
     if(!sound)return;
-    if(buffers&&context.state==="running"){
-      const src=context.createBufferSource();src.buffer=buffers[which];src.connect(context.destination);src.start();
+    if(buffer&&context.state==="running"){
+      const src=context.createBufferSource();src.buffer=buffer;src.connect(context.destination);src.start();
       return;
     }
   }
-  const voices=mediaVoices[which];
+  if(!mediaVoices.has(which))mediaVoices.set(which,[]);
+  const voices=mediaVoices.get(which);
   let voice=voices.find(audio=>audio.paused||audio.ended);
-  if(!voice){voice=new Audio(effects[which]);voices.push(voice)}
+  if(!voice){voice=new Audio("./audio/"+which);voices.push(voice)}
   voice.play().catch(()=>{});
 }
 function busy(){return s.inVolley||s.move}
@@ -65,10 +71,18 @@ function sync(){
     const id=button.id;
     const slot=id.startsWith("pick-")?Number(id.slice(5)):-1;
     const stock=weaponButtons.indexOf(id);
-    if(slot>=0||id==="random")button.hidden=!s.pool||(slot>=0&&s.pool[slot]===null);
+    if(slot>=0||id==="random"){
+      button.hidden=!s.pool||(slot>=0&&s.pool[slot]===null);
+      if(slot>=0&&!button.hidden)button.setAttribute("aria-label","Draft "+weapons[s.pool[slot]].name);
+    }
     else if(s.pool||ui.ended)button.hidden=true;
     else if(ui.dialog||s.finished)button.hidden=id!=="yes"&&id!=="no";
-    else if(ui.mode==="weapon")button.hidden=stock<0||(s.mode==="match"&&!s.ammo[s.turn][stock]);
+    else if(ui.mode==="weapon"){
+      const row=ui.weaponItems.indexOf(stock)-ui.weaponTop;
+      const arrow=id==="weaponup"||id==="weapondown";
+      button.hidden=!arrow&&(stock<0||!ui.weaponItems.includes(stock)||row<0||row>=5);
+      if(stock>=0&&!button.hidden)button.style.top=(462+row*23)/6+"%";
+    }
     else button.hidden=stock>=0||id==="yes"||id==="no";
     button.disabled=!!busy()&&id!=="exit"||id.startsWith("move")&&!s.moves[s.turn];
   }
@@ -86,7 +100,7 @@ function reset(mode=s?.mode||"practice"){
   stopHold();finishAdjust();gesture=null;lag=0;clock=undefined;
   const range=mode==="match"?matchScene:scene;
   s=setup(engine,range,mode);
-  s.onContact=()=>effect(weapons[s.weapon].effect);
+  s.onSound=effect;
   display.bind(s);
   if(mode==="match")openShop(s);
   Object.assign(ui,{angles:s.tanks.map(p=>wrap(360-p[3])),powers:s.tanks.map(p=>p[4]),turnTime:performance.now(),
@@ -112,9 +126,10 @@ function hit(p){
   if(s.finished)return p.y>=239&&p.y<=273?(p.x>=278&&p.x<=374?"yes":p.x>=423&&p.x<=495?"no":null):null;
   if(ui.dialog)return p.y>=277&&p.y<=299?(p.x>=329&&p.x<=391?"yes":p.x>=409&&p.x<=471?"no":null):null;
   if(ui.mode==="weapon"){
-    const index=Math.floor((p.y-462)/23);
-    if(p.x<245||p.x>377||!weaponButtons[index])return "dismiss";
-    return weaponButtons[index];
+    if(p.x>=385&&p.x<410&&p.y>=544&&p.y<586)return p.y<564?"weaponup":"weapondown";
+    const row=Math.floor((p.y-462)/23);
+    if(p.x<245||p.x>377||row<0||row>=5)return "dismiss";
+    return weaponButtons[ui.weaponItems[ui.weaponTop+row]]??"dismiss";
   }
   if(p.x>746&&p.y>=581)return "exit";
   for(const id of ["angleleft","angleright","powerleft","powerright","moveleft","moveright","fire","angle","move","power","weaponup","weapondown","weapon"]){
@@ -152,28 +167,28 @@ function action(id,p){
   }
   if(busy()||ui.dialog)return;
   const turn=s.turn;
+  const choice=weaponButtons.indexOf(id);
+  if(choice>=0){
+    if(s.mode==="practice"||s.ammo[turn][choice])s.selected[turn]=choice;
+    ui.mode=null;sync();return;
+  }
   switch(id){
     case "angleleft":case "angleright":ui.angles[turn]=wrap(ui.angles[turn]+(id==="angleleft"?1:-1));break;
     case "powerleft":case "powerright":ui.powers[turn]=clamp(ui.powers[turn]+(id==="powerleft"?-1:1),1,100);break;
     case "angle":case "power":beginAdjust(id,p);break;
     case "moveleft":case "moveright":moveTank(s,id==="moveleft"?-1:1);ui.mode=null;break;
     case "move":ui.mode="move";break;
-    case "weapon":ui.mode="weapon";break;
+    case "weapon":
+      ui.mode="weapon";ui.weaponItems=inventory(s);ui.weaponTop=ui.weaponItems.indexOf(s.selected[turn])-2;break;
     case "dismiss":ui.mode=null;break;
     case "weaponup":case "weapondown":{
       const direction=id==="weaponup"?-1:1;
-      for(let i=1;i<=weapons.length;i++){
-        const next=(s.selected[turn]+i*direction+weapons.length)%weapons.length;
-        if(s.mode==="practice"||s.ammo[turn][next]){s.selected[turn]=next;break}
-      }
+      if(ui.mode==="weapon"){ui.weaponTop=clamp(ui.weaponTop+direction,-2,ui.weaponItems.length-3);break}
+      const items=inventory(s);
+      s.selected[turn]=items[(items.indexOf(s.selected[turn])+direction+items.length)%items.length];
       break;
     }
-    case "choose":case "big":case "three":case "five":{
-      const next=weaponButtons.indexOf(id);
-      if(s.mode==="practice"||s.ammo[turn][next])s.selected[turn]=next;
-      ui.mode=null;break;
-    }
-    case "fire":if(launch(s,ui.angles[turn],ui.powers[turn])){ui.mode=null;effect(0)}break;
+    case "fire":if(launch(s,ui.angles[turn],ui.powers[turn]))ui.mode=null;break;
   }
   sync();
 }
@@ -219,6 +234,10 @@ function release(e,cancel){
   if(e.pointerType!=="mouse")ui.hover=null;
   sync();
 }
+board.addEventListener("wheel",e=>{
+  if(ui.mode!=="weapon"||!e.deltaY)return;
+  e.preventDefault();action(e.deltaY>0?"weapondown":"weaponup",boardPoint(e));
+},{passive:false});
 board.addEventListener("pointerup",e=>release(e,false));
 board.addEventListener("pointercancel",e=>release(e,true));
 board.addEventListener("lostpointercapture",e=>release(e,true));
@@ -230,7 +249,7 @@ $("sound").onclick=()=>{
   sound=!sound;$("sound").textContent=sound?"Sound on":"Sound off";$("sound").setAttribute("aria-pressed",String(sound));
   if(sound)unlockAudio();else {
     music.pause();context?.suspend().catch(()=>{});
-    for(const voices of mediaVoices)for(const voice of voices){voice.pause();voice.currentTime=0}
+    for(const voices of mediaVoices.values())for(const voice of voices){voice.pause();voice.currentTime=0}
   }
 };
 function stretch(value){
@@ -256,6 +275,9 @@ document.addEventListener("keydown",e=>{
   if(e.key==="F7"||e.key==="F8"){e.preventDefault();if(!e.repeat)$(e.key==="F7"?"full":"size").click();return}
   if(!s)return;
   if(ui.ended&&(e.key==="Enter"||e.key===" ")){e.preventDefault();reset();unlockAudio();return}
+  if(ui.mode==="weapon"&&(e.key==="ArrowUp"||e.key==="ArrowDown")){
+    e.preventDefault();action(e.key==="ArrowUp"?"weaponup":"weapondown",lastPoint);return;
+  }
   if(e.key==="Escape"){e.preventDefault();if(ui.mode){finishAdjust();sync()}else action(ui.dialog?"no":"exit",lastPoint);return}
   if(ui.dialog||ui.ended||e.target.closest("nav"))return;
   const id={ArrowLeft:"angleleft",ArrowRight:"angleright",ArrowUp:"powerright",ArrowDown:"powerleft"," ":"fire"}[e.key];
@@ -286,7 +308,7 @@ try{
   weaponButtons.forEach((id,i)=>{labels[id]="Select "+weapons[i].name;target(id,245,462+i*23,132,23)});
   target("random",360,408,88,32);
   for(let i=0;i<20;i++){
-    const id="pick-"+i;labels[id]="Draft "+weapons[i%weapons.length].name;
+    const id="pick-"+i;labels[id]="Draft weapon";
     target(id,262+158*Math.floor(i/10),124+i%10*27,134,24);
   }
   reset(new URLSearchParams(location.search).get("mode")==="match"?"match":"practice");requestAnimationFrame(frame);

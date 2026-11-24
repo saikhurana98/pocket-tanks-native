@@ -1,5 +1,8 @@
+import {blastSprite} from "./blast-art.mjs";
+import sprites from "./art/animated-shells.json" with {type:"json"};
+import widths from "./art/arsenal.json" with {type:"json"};
 import {weapons,volleys} from "./match.mjs";
-const pngs=["match","big-blast","shop","match-range","arsenal","three-blast","five-blast"];
+const pngs=["tracer-labels","animated-shells","match","big-blast","shop","match-range","arsenal","three-blast","five-blast"];
 const sources = ["range","sky","aim","arrows","angle","power","bar","controls","blast","hulls","barrels","end","weapon","second",...pngs];
 export async function loadArt() {
   const images = await Promise.all(sources.map(async name => {
@@ -19,6 +22,7 @@ export class RangeDisplay {
     this.art=art.images;
     this.buttons=art.buttons;
     this.cursors=art.cursors;
+    this.blastFrames=new Map();
     this.scene=scene;
     this.ground=document.createElement("canvas");
     this.ground.width=800;this.ground.height=450;
@@ -40,7 +44,7 @@ export class RangeDisplay {
     }
   }
   bind(state){
-    state.onBlastStep=(b,eroded)=>{if(eroded)this.updateGround(state,b.x)};
+    state.onBlastStep=(b,eroded)=>{if(eroded)this.updateGround(state,b.x,b.actor.radius)};
     state.onDirtStep=changes=>this.dropSoil(state,changes);
   }
   dropSoil(state,changes){
@@ -55,8 +59,7 @@ export class RangeDisplay {
     }
     this.g.putImageData(this.pixels,0,0,left,minY,right-left+1,maxY-minY+1);
   }
-  updateGround(state,center){
-    const radius=weapons[state.weapon].radius;
+  updateGround(state,center,radius){
     const left=Math.max(0,Math.trunc(center)-radius+1),right=Math.min(799,Math.trunc(center)+radius);
     const rgba=new Uint32Array(this.pixels.data.buffer),sky=new Uint32Array(this.sky.buffer);
     for(let x=left;x<=right;x++){
@@ -104,18 +107,20 @@ export class RangeDisplay {
   projectile(weapon,ball) {
     const positions=ball.trail;
     if(!positions.length)return;
+    if(weapon.pixel){this.ctx.fillStyle="rgb("+weapon.trail.join(",")+")";this.ctx.fillRect(Math.trunc(ball.x),Math.trunc(ball.y),weapon.size+1,weapon.size+1);return}
     const samples=[];
     const length=weapon.trailLength;
+    const size=weapon.size+1;
     for(let i=0;i<length;i++){
       const p=positions[positions.length-1-(length-1-i)*2];
       if(p)samples.push([Math.trunc(p[0]),Math.trunc(p[1]),1+(i+1)*Math.floor(255/length)]);
     }
     if(!samples.length)return;
     const left=Math.max(0,Math.min(...samples.map(p=>p[0]))),top=Math.max(0,Math.min(...samples.map(p=>p[1])));
-    const right=Math.min(800,Math.max(...samples.map(p=>p[0]))+2),bottom=Math.min(450,Math.max(...samples.map(p=>p[1]))+2);
+    const right=Math.min(800,Math.max(...samples.map(p=>p[0]))+size),bottom=Math.min(450,Math.max(...samples.map(p=>p[1]))+size);
     if(right<=left||bottom<=top)return;
     const pixels=this.ctx.getImageData(left,top,right-left,bottom-top),base=pixels.data.slice();
-    for(const [x,y,a] of samples)for(let j=y;j<y+2;j++)for(let i=x;i<x+2;i++){
+    for(const [x,y,a] of samples)for(let j=y;j<y+size;j++)for(let i=x;i<x+size;i++){
       if(i<left||j<top||i>=right||j>=bottom)continue;
       const k=((j-top)*pixels.width+i-left)*4;
       for(let c=0;c<3;c++){const color=weapon.trail[c];pixels.data[k+c]=Math.trunc((base[k+c]*(255-a)+color*a)/255)}
@@ -133,7 +138,7 @@ export class RangeDisplay {
     const c=this.ctx;c.drawImage(this.art.shop,0,0);
     const item=(w,x,y)=>{
       c.drawImage(this.art.arsenal,1,w*24,22,22,x,y,22,22);
-      c.drawImage(this.art.arsenal,140,w*24,100,23,x+25,y,100,23);
+      c.drawImage(this.art.arsenal,140,w*24,widths[w],23,x+25,y,widths[w],23);
     };
     s.pool.forEach((w,i)=>{if(w!==null)item(w,262+158*Math.floor(i/10),124+(i%10)*27)});
     s.draft.forEach((row,player)=>row.forEach((w,j)=>item(w,28+player*605,124+j*27)));
@@ -157,9 +162,35 @@ export class RangeDisplay {
       const phase=t-ui.turnTime<25?60:Math.floor((t-ui.turnTime)/25)%60;
       this.tile("arrows",phase+id*72,12,26,60,x-13,y-(id?65:60));
     }
-    const weapon=weapons[s.weapon],{radius}=weapon,size=radius*2+2;
-    for(const ball of s.balls)this.projectile(weapon,ball);
-    for(const b of s.blasts)this.tile(weapon.atlas,b.phase,8,size,size,Math.trunc(b.x)-radius,Math.trunc(b.y)-radius);
+    for(const ball of s.balls){
+      this.projectile(ball.actor,ball);
+      const animation=ball.actor.animation;
+      if(animation){
+        const [sx,sy,w,h]=sprites[animation.frames[ball.frame]];
+        c.save();c.translate(Math.trunc(ball.x),Math.trunc(ball.y));
+        if(animation.rotate)c.rotate(Math.atan2(ball.vy,ball.vx)+Math.PI/2);
+        c.imageSmoothingEnabled=false;
+        c.drawImage(this.art["animated-shells"],sx,sy,w,h,animation.rotate?-Math.trunc(w/2):-animation.offsetX,
+          animation.rotate?-Math.trunc(h/2):-animation.offsetY,w,h);
+        c.restore();
+      }
+    }
+    for(const b of s.blasts){
+      const a=b.actor,size=a.radius*2+2,x=Math.trunc(b.x)-a.radius,y=Math.trunc(b.y)-a.radius;
+      if(a.atlas)this.tile(a.atlas,b.phase,8,size,size,x,y);
+      else {
+        let cached=this.blastFrames.get(b);
+        if(cached?.phase!==b.phase){
+          cached={phase:b.phase,image:blastSprite(a,b.phase)};
+          this.blastFrames.set(b,cached);
+        }
+        c.drawImage(cached.image,x,y);
+      }
+    }
+    for(const b of this.blastFrames.keys())if(!s.blasts.includes(b))this.blastFrames.delete(b);
+    for(const m of s.markers){
+      this.tile("tracer-labels",Number(m.actor.label)/5+4,1,40,17,Math.trunc(m.x)-20,Math.trunc(m.y)-8);
+    }
     c.restore();
     const hot=busy?null:ui.pressed||ui.hover,btn=this.buttons[hot];
     if(btn){const [sx,sy]=btn.states[ui.pressed?1:0];c.drawImage(this.art.controls,sx,sy,btn.w,btn.h,btn.x,btn.y,btn.w,btn.h)}
@@ -192,10 +223,11 @@ export class RangeDisplay {
     }
     if(ui.mode==="weapon"){
       c.drawImage(this.art.weapon,236,438);
-      c.fillStyle="#000";c.fillRect(245,462,132,110);
-      for(let i=0;i<weapons.length;i++){
-        if(s.mode==="match"&&!s.ammo[s.turn][i])continue;
-        const y=462+i*23,width=[70,52,40,40][i];
+      c.fillStyle="#000";c.fillRect(245,462,132,115);
+      for(let row=0;row<5;row++){
+        const i=ui.weaponItems[ui.weaponTop+row];
+        if(i===undefined)continue;
+        const y=462+row*23,width=widths[i];
         c.drawImage(this.art.arsenal,1,i*24,22,22,245,y,22,22);
         c.drawImage(this.art.arsenal,i===selected?254:140,i*24,width,23,323-Math.ceil(width/2),y,width,23);
       }

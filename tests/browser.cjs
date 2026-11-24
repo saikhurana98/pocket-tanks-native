@@ -79,6 +79,15 @@ async function pixelParity(page){
   },spreadGolden);
   assert.deepEqual(spread,Object.values(spreadGolden).flat().flatMap(f=>f.phases.map(p=>p.sha256)));
   console.log("PASS "+spread.length+" spread-weapon blast phases from the original framebuffer");
+  const tracerPixels=await page.evaluate(async()=>{
+    const {loadArt}=await import("./presentation.mjs");
+    const {images}=await loadArt(),image=images["tracer-labels"];
+    const canvas=document.createElement("canvas");canvas.width=image.width;canvas.height=image.height;
+    const ctx=canvas.getContext("2d",{alpha:false});ctx.drawImage(image,0,0);
+    const hash=await crypto.subtle.digest("SHA-256",ctx.getImageData(0,0,canvas.width,canvas.height).data);
+    return Array.from(new Uint8Array(hash),v=>v.toString(16).padStart(2,"0")).join("");
+  });
+  assert.equal(tracerPixels,"aa24771fffc52d1d441e6cbb021b5af829a268020f4e7276aff8c6282090969e","Original tracer label pixels");
 }
 
 async function exercise(browser,touch){
@@ -86,6 +95,12 @@ async function exercise(browser,touch){
   try{
     const errors=[],requests=[];page.on("pageerror",e=>errors.push(e.message));page.on("response",r=>requests.push([r.status(),r.url()]));
     await page.addInitScript(()=>{
+      // Reproducible shop containing both tracers and a known opening Single Shot.
+      const fill=Crypto.prototype.getRandomValues;
+      Crypto.prototype.getRandomValues=function(bytes){
+        if(bytes instanceof Uint32Array&&bytes.length===1){bytes[0]=104;return bytes}
+        return fill.call(this,bytes);
+      };
       window.fx=[];
       const source=window.AudioBufferSourceNode?.prototype;
       if(source){
@@ -134,8 +149,10 @@ async function exercise(browser,touch){
     assert((await page.evaluate(()=>window.fx)).every(v=>typeof v==="number"?v>0:/\/(cannon|expmedium2|expmedium)\.wav$/.test(v)));
     await tap(405,493);await status("Player 1");await click("#reset");assert.deepEqual(await pixel(),initial);
     await tap(248,490);await status("Moving");await status("Player 1");
-    for(const [row,name] of [[2,"3 Shot"],[3,"5 Shot"],[0,"Single Shot"]]){
-      await tap(311,566);assert(await page.locator("#choose").isVisible());await tap(310,471+row*23);
+    for(const [name,id] of [["3 Shot","#three"],["5 Shot","#five"],["Flash Blast","#weapon-9"]]){
+      await tap(311,566);
+      for(let i=0;i<60&&!(await page.locator(id).isVisible());i++)await tap(397,575);
+      await click(id);
       assert.equal(await page.locator("#fire").getAttribute("aria-label"),"Fire "+name);
     }
     await click("#full");await page.waitForFunction(()=>document.fullscreenElement||document.querySelector(".expanded"));
@@ -146,6 +163,8 @@ async function exercise(browser,touch){
     await tap(770,590);assert(await page.locator("#no").isVisible());await click("#full");await tap(440,288);
     await click("#sound");assert.equal(await page.locator("#sound").getAttribute("aria-pressed"),"false");
     await click("#newmatch");await status("Weapon shop · Player 1");
+    const dealt=await page.locator('[id^="pick-"]').evaluateAll(buttons=>buttons.map(b=>b.getAttribute("aria-label").slice(6)));
+    assert.equal(dealt.length,20);assert.equal(dealt[0],"Single Shot");
     await tap(300,135);await status("Weapon shop · Player 2");
     assert(await page.locator("#pick-0").isHidden());
     await tap(300,162);await status("Weapon shop · Player 1");await tap(402,423);
@@ -163,13 +182,12 @@ async function exercise(browser,touch){
       await status(n===19?"Game over":"Player "+(n%2===0?2:1));
       if(n===0)assert.match(await page.locator("#status").textContent(),/Score 60 to 0$/);
     }
-    for(const name of ["Single Shot","Big Shot","3 Shot","5 Shot"])
-      assert.equal(fired.filter(label=>label==="Fire "+name).length,5,name+" shots consumed");
+    assert.deepEqual(fired.map(label=>label.slice(5)).sort(),dealt.sort());
     assert(await page.locator("#fire").isHidden());
     await tap(320,253);await status("Weapon shop");await tap(402,423);await status("Player 1");
     await click("#practice");await status("Player 1");
     assert.equal(await page.locator("#fire").getAttribute("aria-label"),"Fire Single Shot");
-    console.log("PASS ten-volley match, manual and random draft, five rounds of each of four weapons, game over, rematch and return to practice");
+    console.log("PASS ten-volley match, manual and random draft, every drafted weapon, game over, rematch and return to practice");
     assert.deepEqual(errors,[]);assert(!requests.some(([s,u])=>s>=400||/\.(exe|dll)(\?|$)|boxedwine/i.test(u)));
     console.log("PASS "+(touch?"touch / GPU disabled":"desktop")+" fitted and stretched pointer mapping, turns, blast, movement, audio, weapon menu, fullscreen and reset");
   }finally{await page.close()}

@@ -68,30 +68,92 @@
   (func $solid (result i32)
     (i32.load8_u (i32.add (call $cell (global.get $x) (f64.const 799))
       (i32.mul (i32.const 800) (call $cell (global.get $y) (f64.const 449))))))
+  ;; 0x4343ea selects down, up or disabled gravity. At 0x435800 the
+  ;; underground projectile selects empty cells instead of occupied cells.
+  (global $gravity (mut f64) (f64.const 1))
+  (global $hitAir (mut i32) (i32.const 0))
+  (global $contactX (export "contactX") (mut f64) (f64.const 0))
+  (global $contactY (export "contactY") (mut f64) (f64.const 0))
+  (export "surfaceAngle" (func $crtAtan))
+  (export "surfaceCos" (func $cos))
+  (export "surfaceSin" (func $sin))
+  (global $fresh (mut i32) (i32.const 0))
+  (global $dropX (mut f64) (f64.const -9999))
+  (global $dropping (export "dropping") (mut i32) (i32.const 0))
+  (func (export "dropTarget") (param $x f64) (global.set $dropX (local.get $x)))
+  (global $targetX (mut f64) (f64.const 0))
+  (global $targetY (mut f64) (f64.const 0))
+  (global $distance (mut f64) (f64.const 0))
+  (global $approach (export "approach") (mut i32) (i32.const 0))
+  (global $approachX (export "approachX") (mut f64) (f64.const 0))
+  (global $approachY (export "approachY") (mut f64) (f64.const 0))
+  (global $approachAngle (export "approachAngle") (mut f64) (f64.const 0))
+  (global $approachPower (export "approachPower") (mut f64) (f64.const 0))
+  (global $homingRange (mut f64) (f64.const 0))
+  (global $homingMagnitude (mut f64) (f64.const 0))
+  (func (export "homing") (param $range f64) (param $magnitude f64)
+    (global.set $homingRange (local.get $range)) (global.set $homingMagnitude (local.get $magnitude)))
+  (func (export "proximityTarget") (param $x f64) (param $y f64) (param $range f64)
+    (global.set $targetX (local.get $x)) (global.set $targetY (local.get $y))
+    (global.set $distance (local.get $range)))
+  (func (export "setFlightMode") (param $g f64) (param $air i32) (param $first i32)
+    (global.set $fresh (local.get $first))
+    (global.set $gravity (local.get $g)) (global.set $hitAir (local.get $air)))
+  (func $contact (result i32) (i32.xor (global.get $hitAir) (call $solid)))
   (func (export "step") (param $dt f64) (param $wind f64) (result i32)
     (local $scale f64) (local $sx f64) (local $sy f64) (local $remaining f64)
     ;; 0x4343f7..0x4344bc. The update stores each velocity before using it.
-    (global.set $vy (f64.add (f64.mul (f64.const 5.4) (local.get $dt)) (global.get $vy)))
+    (global.set $vy (f64.add (f64.mul (global.get $gravity) (f64.mul (f64.const 5.4) (local.get $dt))) (global.get $vy)))
     (global.set $vx (f64.add (f64.mul (f64.mul (local.get $wind) (f64.const 0.02)) (local.get $dt)) (global.get $vx)))
     (local.set $scale (f64.mul (local.get $dt) (f64.const 50)))
     (global.set $x (f64.add (f64.mul (local.get $scale) (global.get $vx)) (global.get $x)))
     (global.set $y (f64.add (f64.mul (local.get $scale) (global.get $vy)) (global.get $y)))
+    ;; 0x43454f..0x4345be. Within three pixels of the opposing tank,
+    ;; damp lateral velocity once per tick and stop motion against gravity.
+    (global.set $dropping (f64.le (f64.abs (f64.sub (global.get $x) (global.get $dropX))) (f64.const 3)))
+    (if (global.get $dropping) (then
+      (global.set $vx (f64.mul (global.get $vx) (f64.const 0.5)))
+      (if (f64.lt (f64.mul (global.get $vy) (global.get $gravity)) (f64.const 0))
+        (then (global.set $vy (f64.const 0))))))
+    ;; 0x434712..0x4347a2 tests the opposing tank's anchor before terrain contact.
+    (global.set $approach (i32.const 0))
+    (if (f64.gt (global.get $distance) (f64.const 0)) (then
+      (local.set $sx (f64.sub (global.get $x) (global.get $targetX)))
+      (local.set $sy (f64.sub (global.get $y) (global.get $targetY)))
+      (global.set $approach (f64.lt (f64.sqrt (f64.add
+        (f64.mul (local.get $sx) (local.get $sx)) (f64.mul (local.get $sy) (local.get $sy)))) (global.get $distance)))
+      (if (global.get $approach) (then
+        (global.set $approachX (global.get $x)) (global.set $approachY (global.get $y))
+        (global.set $approachAngle (call $impactAngle)) (global.set $approachPower (call $impactPower))))))
+    ;; 0x434c40..0x434cd5. Acceleration toward the target after updating position.
+    (if (f64.gt (global.get $homingRange) (f64.const 0)) (then
+      (local.set $sx (f64.sub (global.get $targetX) (global.get $x)))
+      (local.set $sy (f64.sub (global.get $targetY) (global.get $y)))
+      (if (f64.lt (f64.sqrt (f64.add (f64.mul (local.get $sx) (local.get $sx))
+        (f64.mul (local.get $sy) (local.get $sy)))) (global.get $homingRange)) (then
+        (local.set $scale (f64.mul (global.get $homingMagnitude) (local.get $dt)))
+        (local.set $remaining (call $crtAtan (local.get $sy) (local.get $sx)))
+        (global.set $vx (f64.add (global.get $vx) (f64.mul (call $cos (local.get $remaining)) (local.get $scale))))
+        (global.set $vy (f64.add (global.get $vy) (f64.mul (call $sin (local.get $remaining)) (local.get $scale))))))))
     (if (i32.or (f64.lt (global.get $x) (f64.const 0)) (f64.ge (global.get $x) (f64.const 800)))
       (then (return (i32.const 2))))
     (if (f64.ge (global.get $y) (f64.const 450))
       (then (global.set $y (f64.const 449)) (return (i32.const 1))))
-    (if (i32.eqz (call $solid)) (then (return (i32.const 0))))
+    (if (i32.eqz (call $contact)) (then (return (i32.const 0))))
     ;; 0x4351a3..0x43526e and 0x4354f9..0x435508, ordinary terrain.
     (local.set $sx (f64.div (global.get $vx) (f64.const 20)))
     (local.set $sy (f64.div (global.get $vy) (f64.const 20)))
     (local.set $remaining (local.get $dt))
     (block $done (loop $back
+      (br_if $done (i32.and (global.get $fresh) (i32.eqz (global.get $hitAir))))
       (br_if $done (f64.le (local.get $remaining) (f64.const 0)))
-      (br_if $done (i32.eqz (call $solid)))
+      (br_if $done (i32.eqz (call $contact)))
       (global.set $x (f64.sub (global.get $x) (local.get $sx)))
       (global.set $y (f64.sub (global.get $y) (local.get $sy)))
       (local.set $remaining (f64.sub (local.get $remaining) (f64.div (local.get $dt) (f64.const 20))))
       (br $back)))
+    (global.set $contactX (global.get $x))
+    (global.set $contactY (global.get $y))
     (global.set $x (f64.add (local.get $sx) (global.get $x)))
     (global.set $y (f64.add (local.get $sy) (global.get $y)))
     (i32.const 1))
@@ -138,6 +200,13 @@
       (local.set $node (local.get $next))
       (br_if $edge (i32.ne (local.get $node) (local.get $base))))
     (i32.const 1))
+  ;; Game random stream at 0x4422fc..0x442322. The next unsigned 32-bit
+  ;; state, reduced modulo the pack operand, supplies the RND operation.
+  (func (export "nextRandom") (param $seed i32) (result i32)
+    (i32.sub (i32.mul (i32.and (local.get $seed) (i32.const 1)) (i32.const 0x5eb0a82f))
+             (i32.mul (i32.shr_u (local.get $seed) (i32.const 1)) (i32.const 0x429eaf9d))))
+  (global $eraseTerrain (mut i32) (i32.const 1))
+  (func (export "setTerrainErase") (param $enabled i32) (global.set $eraseTerrain (local.get $enabled)))
   (func (export "setBlastRadius") (param $size i32)
     (global.set $radius (local.get $size)))
   ;; 0x447de0..0x447e15 copies a falling section down one pixel, bottom first.
@@ -182,7 +251,7 @@
     ;; outline one pixel to the right (0x44c049 and 0x44c07a).
     (if (f64.gt (global.get $blastAge) (f64.const 0.02)) (then
       (global.set $blastAge (f64.sub (global.get $blastAge) (f64.const 0.02)))
-      (if (i32.lt_s (global.get $phase) (i32.sub (global.get $radius) (i32.const 1))) (then
+      (if (i32.and (global.get $eraseTerrain) (i32.lt_s (global.get $phase) (i32.sub (global.get $radius) (i32.const 1)))) (then
         (local.set $cx (i32.trunc_f64_s (global.get $x)))
         (local.set $cy (i32.trunc_f64_s (global.get $y)))
         (call $ring (local.get $cx) (local.get $cy) (global.get $phase))
@@ -207,9 +276,17 @@
     (f64.trunc (f64.sub (f64.add
       (f64.add (f64.mul (call $sin (call $mountAngle (f64.sub (local.get $slope) (f64.const 90)))) (f64.const 7)) (local.get $y))
       (f64.mul (call $sin (call $mountAngle (f64.trunc (local.get $angle)))) (f64.const 15))) (f64.const 1))))
-  (func (export "impactAngle") (result f64)
-    (f64.div (f64.mul (call $atan2 (global.get $vy) (global.get $vx)) (f64.const 180)) (f64.const 3.141592653589793)))
-  (func (export "impactPower") (result f64)
+  ;; 0x4c724c..0x4c726b operates in the positive quadrant first, then
+  ;; reflects the angle along X and Y. This order affects secondary launches.
+  (func $crtAtan (param $y f64) (param $x f64) (result f64)
+    (local $a f64)
+    (local.set $a (call $atan2 (f64.abs (local.get $y)) (f64.abs (local.get $x))))
+    (if (f64.lt (f64.copysign (f64.const 1) (local.get $x)) (f64.const 0))
+      (then (local.set $a (f64.sub (f64.const 3.141592653589793) (local.get $a)))))
+    (f64.copysign (local.get $a) (local.get $y)))
+  (func $impactAngle (export "impactAngle") (result f64)
+    (f64.div (f64.mul (call $crtAtan (global.get $vy) (global.get $vx)) (f64.const 180)) (f64.const 3.141592653589793)))
+  (func $impactPower (export "impactPower") (result f64)
     (local $p f64)
     (local.set $p (f64.div (f64.sub (f64.sqrt (f64.add
       (f64.mul (global.get $vy) (global.get $vy)) (f64.mul (global.get $vx) (global.get $vx)))) (f64.const 1.1)) (f64.const 0.11)))

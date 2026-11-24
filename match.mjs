@@ -1,16 +1,30 @@
 import offsets from "./engine/tank-offsets.json" with {type:"json"};
 
-// Values from the Original weapon pack, SingleShotExplosion and BigShotExplosion.
-export const weapons=[
-  {name:"Single Shot",radius:22,damage:60,trail:[16,255,255],effect:1,spread:[0],trailLength:11,colorLength:12,atlas:"blast"},
-  {name:"Big Shot",radius:50,damage:30,trail:[255,0,255],effect:2,spread:[0],trailLength:11,colorLength:12,atlas:"big-blast"},
-  {name:"3 Shot",radius:25,damage:20,trail:[97,227,189],effect:1,spread:[-4,0,4],trailLength:12,colorLength:10,atlas:"three-blast"},
-  {name:"5 Shot",radius:20,damage:20,trail:[97,227,189],effect:1,spread:[-4,-2,0,2,4],trailLength:12,colorLength:12,atlas:"five-blast"}
-];
+import programs from "./engine/weapons.json" with {type:"json"};
+
+export const weapons=programs.map(program=>{
+  const primaryBlast=Object.values(program.actors).find(a=>a.type==="blast");
+  return {...program,radius:primaryBlast?.radius??0,damage:primaryBlast?.damage??0};
+});
+export function inventory(state){
+  return catalog.filter(i=>state.mode==="practice"||state.ammo[state.turn][i]>0);
+}
 export const volleys=10;
+const catalog=weapons.map((_,i)=>i).sort((a,b)=>weapons[a].slot-weapons[b].slot);
+export function roll(state,bound){
+  state.seed=state.engine.nextRandom(state.seed)>>>0;
+  return state.seed%bound;
+}
+export function deal(state,catalog){
+  // shop.cpp, 0x46cf10. Draw positions without replacement, then draw weapons with replacement.
+  const positions=Array.from({length:2*volleys},(_,i)=>i),order=[];
+  while(positions.length)order.push(positions.splice(roll(state,positions.length),1)[0]);
+  const pool=Array(2*volleys);
+  for(const slot of order)pool[slot]=catalog[roll(state,catalog.length)];
+  return pool;
+}
 export function openShop(state){
-  // The supported pool supplies twenty choices for the original ten volleys.
-  state.pool=Array.from({length:2*volleys},(_,i)=>i%weapons.length);
+  state.pool=deal(state,catalog);
   state.draft=[[],[]];
   state.ammo=state.tanks.map(()=>weapons.map(()=>0));
 }
@@ -30,7 +44,7 @@ export function pickWeapon(state,slot){
 export function randomDraft(state){
   while(state.pool){
     const remaining=state.pool.flatMap((w,i)=>w===null?[]:[i]);
-    pickWeapon(state,remaining[Math.floor(Math.random()*remaining.length)]);
+    pickWeapon(state,remaining[roll(state,remaining.length)]);
   }
 }
 const hull=[[4,-10],[11,-4],[11,-1],[3,2],[-3,2],[-11,-1],[-11,-4],[-5,-10]];
@@ -69,7 +83,7 @@ export function hitsTank(state,x,y){
     (state.engine.insideHull(x,y,address,8)||state.engine.insideHull(x,y,address+64,4)));
 }
 export function applyBlast(state,hit){
-  const weapon=weapons[state.weapon],front=Math.min(hit.phase,weapon.radius-1);
+  const weapon=hit.actor,front=Math.min(hit.phase,weapon.radius-1);
   state.tanks.forEach((pose,id)=>{
     if(hit.struck[id])return;
     const [cx,cy]=damageCenter(pose);
@@ -77,6 +91,7 @@ export function applyBlast(state,hit){
     if(points<=0)return;
     hit.struck[id]=true;
     state.scores[state.turn]=state.engine.scoreHit(state.scores[state.turn],points,id===state.turn);
+    if(!weapon.knockback)return;
     // 0x44c637..0x44c715, normal throw with default intensity and no angle override.
     const dx=Math.trunc(pose[0])-Math.trunc(hit.x),dy=Math.trunc(pose[1])-Math.trunc(hit.y);
     const radians=Math.fround(Math.atan2(dy,dx)),degrees=Math.fround(radians*180/3.1415927);
