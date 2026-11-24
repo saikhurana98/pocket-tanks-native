@@ -206,12 +206,22 @@ async function exercise(browser,touch){
     for(let p=20;p<57;p++)await page.keyboard.press("ArrowUp");
     assert.equal(await page.locator("#power").getAttribute("aria-label"),"Adjust power, 57");
     const fired=[];
+    // A shell can strike in a single 4 ms step. Record status transitions
+    // before pressing Fire, including shells that land before the next poll.
+    await page.evaluate(()=>{
+      new MutationObserver(records=>{
+        for(const record of records)for(const node of record.addedNodes){
+          if(node.textContent.startsWith("Shot in flight"))window.sawLaunch=true;
+        }
+      }).observe(document.getElementById("status"),{childList:true});
+    });
     for(let n=0;n<20;n++){
       const ready=await page.locator("#status").textContent();
       assert(ready.includes("Volley "+(1+Math.floor(n/2))+" ·"),ready);
       fired.push(await page.locator("#fire").getAttribute("aria-label"));
+      await page.evaluate(()=>{window.sawLaunch=false});
       await tap(405,493);
-      await status("Shot in flight");
+      await page.waitForFunction(()=>window.sawLaunch);
       await status(n===19?"Game over":"Player "+(n%2===0?2:1));
       if(n===0)assert.match(await page.locator("#status").textContent(),/Score 60 to 0$/);
     }
