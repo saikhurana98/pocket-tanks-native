@@ -23,6 +23,11 @@ export class RangeDisplay {
     this.buttons=art.buttons;
     this.cursors=art.cursors;
     this.blastFrames=new Map();
+    const mask=document.createElement("canvas");
+    mask.width=40;mask.height=153;
+    const maskContext=mask.getContext("2d");
+    maskContext.drawImage(this.art["tracer-labels"],0,0);
+    this.tracerMask=maskContext.getImageData(0,0,mask.width,mask.height).data;
     this.scene=scene;
     this.ground=document.createElement("canvas");
     this.ground.width=800;this.ground.height=450;
@@ -74,6 +79,20 @@ export class RangeDisplay {
   }
   tile(name,n,cols,w,h,x,y,sourceWidth=w) {
     this.ctx.drawImage(this.art[name],n%cols*sourceWidth,Math.floor(n/cols)*h,w,h,x,y,w,h);
+  }
+  tracer(label,cx,cy){
+    const x=Math.trunc(cx)-20,y=Math.trunc(cy)-8;
+    const left=Math.max(0,x),top=Math.max(0,y);
+    const w=Math.min(800,x+40)-left,h=Math.min(450,y+17)-top;
+    if(w<=0||h<=0)return;
+    const pixels=this.ctx.getImageData(left,top,w,h),row=(Number(label)/5+4)*17;
+    for(let j=0;j<h;j++)for(let i=0;i<w;i++){
+      const amount=this.tracerMask[((row+top-y+j)*40+left-x+i)*4];
+      if(!amount)continue;
+      const p=(j*w+i)*4;
+      for(let k=p;k<p+3;k++)pixels.data[k]+=Math.trunc((255-pixels.data[k])*amount/255);
+    }
+    this.ctx.putImageData(pixels,left,top);
   }
   cursor(pointer,hot,busy){
     const w=busy?21:hot?29:20,h=busy?25:hot?35:24,offset=busy?5980:hot?1920:0;
@@ -189,7 +208,7 @@ export class RangeDisplay {
     }
     for(const b of this.blastFrames.keys())if(!s.blasts.includes(b))this.blastFrames.delete(b);
     for(const m of s.markers){
-      this.tile("tracer-labels",Number(m.actor.label)/5+4,1,40,17,Math.trunc(m.x)-20,Math.trunc(m.y)-8);
+      this.tracer(m.actor.label,m.x,m.y);
     }
     c.restore();
     const hot=busy?null:ui.pressed||ui.hover,btn=this.buttons[hot];

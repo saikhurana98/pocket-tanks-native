@@ -36,7 +36,7 @@ const packs=["weaplist.wep","weaplist2.wep"].map(readPack);
 const palette=decode("art.bbk").match(/<PALETTE number="11"[^>]*>([\s\S]*?)<\/PALETTE>/)[1].trim().split(/\s+/).map(Number);
 const rgb=i=>palette.slice(i*3,i*3+3);
 const supported=["Single Shot","Big Shot","3 Shot","5 Shot","Jackhammer","Pile Driver","Mountain Mover","Potholes","Crater Maker","Flash Blast","Laser Battery","Ground Hog","Worm","Late Bloomer","Fission Bomb","Sprinkler","Homing Missile","Tommy Gun","Minigun","Firecracker","Scatter Shot","Tracer","Super Tracer"];
-supported.push("Homing Worm","Pineapple","Spider","Chain Reaction","Heatseeker");
+supported.push("Homing Worm","Pineapple","Spider","Chain Reaction","Heatseeker","Crazy Ivan","Jump Jets");
 const atlas={"Single Shot":"blast","Big Shot":"big-blast","3 Shot":"three-blast","5 Shot":"five-blast"};
 const sounds=new Set(["cannon.wav","expmedium2.wav","expmedium.wav"]);
 function compile(pack,name){
@@ -84,6 +84,8 @@ function compile(pack,name){
       if(atlas[name])actors[key].atlas=atlas[name];
     }else if(block.type==="TRACER"){
       actors[key]={type:"marker",label:f.TEXT,seconds:Number(f.DISPLAY_TIME)};
+    }else if(block.type==="JUMPJETS"){
+      actors[key]={type:"jump"};
     }else throw Error("Unsupported actor "+block.type);
     if(actors[key]&&f.SOUND_EFFECT&&f.SOUND_EFFECT!=="NONE"){actors[key].sound=f.SOUND_EFFECT;sounds.add(f.SOUND_EFFECT)}
     return key;

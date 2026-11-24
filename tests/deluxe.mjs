@@ -34,11 +34,27 @@ for(const trace of JSON.parse(gunzipSync(read("./captures/deluxe.json.gz")))){
     assert.deepEqual([tick,b.x,b.y,r,hash>>>0],trace.blasts[burst++],trace.file+" blast at "+tick);
   };
   for(;s.inVolley&&tick<10000;tick++){
+    if(trace.jump&&tick<trace.jump.length){
+      const [mode,x,y,vx,vy,slope]=trace.jump[tick],id=trace.turn;
+      assert.deepEqual([s.airborne[id]?2:1,...s.tanks[id].slice(0,2)],[mode,x,y],trace.file+" jump at "+tick);
+      if(mode===2)assert.deepEqual(s.airborne[id],[vx,vy]);
+      assert(Math.abs(s.tanks[id][2]-slope)<1e-12,trace.file+" jump slope at "+tick);
+    }
+    if(trace.poses&&tick<trace.poses.length){
+      const [originalTick,...poses]=trace.poses[tick];
+      assert.equal(tick,originalTick);
+      poses.forEach(([mode,x,y,slope,age],id)=>{
+        assert.deepEqual([s.airborne[id]?2:1,...s.tanks[id].slice(0,2),s.groundAge[id]],
+          [mode,x,y,age],trace.file+" tank "+id+" at "+tick);
+        assert(Math.abs(s.tanks[id][2]-slope)<1e-12,trace.file+" tank slope at "+tick);
+      });
+    }
     const active=s.balls.slice();
     step(s);
     for(const b of active)assert.deepEqual([tick,b.x,b.y,b.vx,b.vy],trace.frames[frame++],trace.file+" projectile at "+tick);
   }
   if(trace.markers)assert.deepEqual(markers,trace.markers);
+  if(trace.jump)assert(tick>=trace.jump.length,trace.file+" ended before landing and settling");
   assert.equal(s.turn,1-trace.turn);
   assert.equal(frame,trace.frames.length);
   assert.equal(burst,trace.blasts.length);

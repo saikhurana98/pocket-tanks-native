@@ -80,10 +80,12 @@ async function pixelParity(page){
   assert.deepEqual(spread,Object.values(spreadGolden).flat().flatMap(f=>f.phases.map(p=>p.sha256)));
   console.log("PASS "+spread.length+" spread-weapon blast phases from the original framebuffer");
   const tracerPixels=await page.evaluate(async()=>{
-    const {loadArt}=await import("./presentation.mjs");
-    const {images}=await loadArt(),image=images["tracer-labels"];
-    const canvas=document.createElement("canvas");canvas.width=image.width;canvas.height=image.height;
-    const ctx=canvas.getContext("2d",{alpha:false});ctx.drawImage(image,0,0);
+    const {loadArt,RangeDisplay}=await import("./presentation.mjs");
+    const scene=await(await fetch("./range.json")).json(),canvas=document.createElement("canvas");
+    canvas.width=40;canvas.height=153;
+    const display=new RangeDisplay(canvas,await loadArt(),scene),ctx=display.ctx;
+    ctx.fillStyle="#000";ctx.fillRect(0,0,40,153);
+    for(let i=0;i<9;i++)display.tracer((i-4)*5,20,17*i+8);
     const hash=await crypto.subtle.digest("SHA-256",ctx.getImageData(0,0,canvas.width,canvas.height).data);
     return Array.from(new Uint8Array(hash),v=>v.toString(16).padStart(2,"0")).join("");
   });
@@ -95,10 +97,10 @@ async function exercise(browser,touch){
   try{
     const errors=[],requests=[];page.on("pageerror",e=>errors.push(e.message));page.on("response",r=>requests.push([r.status(),r.url()]));
     await page.addInitScript(()=>{
-      // Reproducible shop containing both tracers and a known opening Single Shot.
+      // The deal includes Jump Jets, Crazy Ivan, Super Tracer and a known opening Single Shot.
       const fill=Crypto.prototype.getRandomValues;
       Crypto.prototype.getRandomValues=function(bytes){
-        if(bytes instanceof Uint32Array&&bytes.length===1){bytes[0]=104;return bytes}
+        if(bytes instanceof Uint32Array&&bytes.length===1){bytes[0]=59;return bytes}
         return fill.call(this,bytes);
       };
       window.fx=[];

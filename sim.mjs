@@ -1,4 +1,4 @@
-import {weapons,volleys,roll,prepareColliders,hitsTank,applyBlast} from "./match.mjs";
+import {weapons,volleys,roll,prepareColliders,hitsTank,applyBlast,throwTank} from "./match.mjs";
 import {outsideContact} from "./contour.mjs";
 import {queueDirt,advanceDirt} from "./soil.mjs";
 export const W=800, H=450, DT=.004;
@@ -40,6 +40,7 @@ export function launch(s,angle,power) {
   s.tanks[s.turn][3]=direction;
   s.colliders=prepareColliders(s);
   const weapon=weapons[s.weapon],ox=e.muzzleX(x,slope,direction),oy=e.muzzleY(y,slope,direction);
+  s.groundAge=[2*DT,2*DT];
   s.tick=-1;
   queueTrigger(s,weapon.entry,ox,oy,direction,power);
   releaseDue(s);
@@ -60,6 +61,7 @@ function applyExpression(s,previous,initial,expression){
     else if(op==="SET")v=Math.fround(Number(tokens[++i]));
     else if(op==="+")v+=Math.fround(Number(tokens[++i]));
     else if(op==="-")v-=Math.fround(Number(tokens[++i]));
+    else if(op==="/")v/=Math.fround(Number(tokens[++i]));
     else throw Error("Unknown trigger operation "+op);
   }
   return v;
@@ -86,6 +88,10 @@ function releaseDue(s){
       s.balls.push(ball);
     }else if(actor.type==="marker"){
       const marker={x,y,actor,age:0};s.markers.push(marker);s.onMarker?.(marker);
+    }else if(actor.type==="jump"){
+      // 0x45a760. Jump Jets offsets the tank three pixels along the barrel before takeoff.
+      throwTank(s,s.turn,angle,power*.11+1.1,3);
+      s.groundAge[s.turn]=DT;s.jumpSettling=true;
     }else{
       s.blasts.push({actor,x,y,phase:0,age:0,struck:[false,false]});
       if(actor.erase)addCrater(s,x,actor.radius);
@@ -104,7 +110,7 @@ export function groundPose(s,x,startY=0) {
   const y=floorAt(s,x,startY);
   const rise=floorAt(s,Math.min(W-1,x+4),y)-floorAt(s,Math.max(0,x-4),y);
   const angle=Math.atan2(rise,9)*180/3.1415927;
-  return [x,y,angle<0?Math.round((360+angle)*100)/100:angle];
+  return [x,y,angle<0?360-Math.trunc(-angle*100)/100:angle];
 }
 function endTurn(s){
   s.inVolley=false;
@@ -139,6 +145,36 @@ function moveAirborne(s){
       pose[1]=surface;pose[2]=slope;s.airborne[id]=null;
     }
   }
+}
+// 0x47454b and 0x4748e0. A grounded tank checks its supports every 20 ms.
+// The clock pauses while it is airborne. The checks follow the hull normal.
+function settleTank(s,pose,id){
+  s.groundAge[id]+=DT;
+  if(s.groundAge[id]<=.02)return false;
+  s.groundAge[id]-=.02;
+  const occupied=(x,y)=>s.solid[Math.max(0,Math.min(H-1,Math.trunc(y)))*W+Math.max(0,Math.min(W-1,Math.trunc(x)))];
+  const radians=(pose[2]-90)/180*3.1415927;
+  const dx=s.engine.surfaceCos(radians),dy=s.engine.surfaceSin(radians);
+  const normal=distance=>occupied(pose[0]+distance*dx,pose[1]+distance*dy);
+  if([0,1,2,3,4].every(normal))return false;
+
+  let x=Math.trunc(pose[0]),y=Math.trunc(pose[1]),moved=false;
+  const floor=floorAt(s,x,y);
+  if(occupied(x,y)&&x>17&&x<W-17&&![2,3,4,5,6,7].some(normal)){
+    const rise=floorAt(s,x+4,floor)-floorAt(s,x-4,floor);
+    if(Math.abs(Math.atan2(rise,9)*180/3.1415927)>60){
+      const next=x+Math.sign(rise);
+      if([1,2,3,4].some(n=>!occupied(x,y-n))||!occupied(next,y)){
+        x=next;pose[0]=x;pose[2]=groundPose(s,x,y)[2];moved=true;
+      }
+    }
+  }
+  if(!occupied(x,y)&&y<H-1){
+    pose[1]=Math.min(H-1,pose[1]+1);y++;moved=true;
+    if([-1,0,1].some(offset=>occupied(x+offset,y)))pose[2]=groundPose(s,x,y)[2];
+    if(floor-y>6)s.airborne[id]=[0,0];
+  }
+  return moved;
 }
 export function step(s) {
   const e=s.engine;
@@ -198,6 +234,15 @@ export function step(s) {
   s.markers=s.markers.filter(m=>{m.age+=DT;return m.age<m.actor.seconds});
   releaseDue(s);
   advanceDirt(s,DT);
-  if(s.airborne.some(Boolean)){moveAirborne(s);s.colliders=prepareColliders(s)}
-  if(!s.ball&&!s.impact&&!s.pending.length&&!s.markers.length&&!s.dirt.size&&!s.airborne.some(Boolean))endTurn(s);
+  const airborne=s.airborne.map(Boolean);
+  let moved=airborne.some(Boolean);
+  if(moved)moveAirborne(s);
+  s.tanks.forEach((pose,id)=>{
+    if(airborne[id])return;
+    const groundedTick=s.groundAge[id]+DT>.02,changed=settleTank(s,pose,id);
+    if(changed)moved=true;
+    if(s.jumpSettling&&id===s.turn&&groundedTick&&!changed)s.jumpSettling=false;
+  });
+  if(moved)s.colliders=prepareColliders(s);
+  if(!s.ball&&!s.impact&&!s.pending.length&&!s.markers.length&&!s.dirt.size&&!s.airborne.some(Boolean)&&!s.jumpSettling)endTurn(s);
 }

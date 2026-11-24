@@ -57,7 +57,7 @@ function finishAdjust(){
   if(document.pointerLockElement===board)document.exitPointerLock();
 }
 function sync(){
-  let status=ui.ended?"Game ended":s.move?"Moving":s.ball?"Shot in flight":s.inVolley?"Impact":"Player "+(s.turn+1)+" · Ready to fire";
+  let status=ui.ended?"Game ended":s.move?"Moving":s.ball||s.jumpSettling?"Shot in flight":s.inVolley?"Impact":"Player "+(s.turn+1)+" · Ready to fire";
   if(s.pool)status="Weapon shop · Player "+((s.draft[0].length+s.draft[1].length)%2+1)+" picks";
   else if(s.finished){
     const [a,b]=s.scores;status="Game over · "+(a===b?"Tie":"Player "+(a>b?1:2)+" wins")+" · "+a+" to "+b;

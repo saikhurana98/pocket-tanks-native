@@ -82,6 +82,13 @@ export function hitsTank(state,x,y){
     Math.abs(x-cx)<=20 && Math.abs(y-cy)<=20 &&
     (state.engine.insideHull(x,y,address,8)||state.engine.insideHull(x,y,address+64,4)));
 }
+// 0x475430 applies the impulse and takes one full velocity step at launch.
+export function throwTank(state,id,angle,impulse,offset=0){
+  const pose=state.tanks[id],[cosine,sine]=rotation(angle),c=cosine/1024,s=sine/1024;
+  pose[0]+=c*offset;pose[1]+=s*offset;
+  state.airborne[id]=[c*impulse,s*impulse];
+  pose[0]+=state.airborne[id][0];pose[1]+=state.airborne[id][1];
+}
 export function applyBlast(state,hit){
   const weapon=hit.actor,front=Math.min(hit.phase,weapon.radius-1);
   state.tanks.forEach((pose,id)=>{
@@ -96,9 +103,6 @@ export function applyBlast(state,hit){
     const dx=Math.trunc(pose[0])-Math.trunc(hit.x),dy=Math.trunc(pose[1])-Math.trunc(hit.y);
     const radians=Math.fround(Math.atan2(dy,dx)),degrees=Math.fround(radians*180/3.1415927);
     const direction=315-Math.abs(degrees)*.5;
-    const [c,s]=rotation(direction),impulse=points*.038;
-    state.airborne[id]=[c/1024*impulse,s/1024*impulse];
-    pose[0]+=state.airborne[id][0];
-    pose[1]+=state.airborne[id][1];
+    throwTank(state,id,direction,points*.038);
   });
 }
