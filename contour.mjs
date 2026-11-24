@@ -4,8 +4,8 @@ function solid(s,x,y){
 }
 // The original walks three occupied neighbors in each direction along the
 // impact surface (0x478dd0 and 0x4794a0). Each side keeps its own heading.
-function follow(s,x,y,heading,hand){
-  for(let step=0;step<3;step++){
+export function walkContour(s,x,y,heading,hand,steps){
+  for(let step=0;step<steps;step++){
     let next=2;
     for(const turn of [hand,0,-hand,2]){
       const id=(heading+turn+4)%4,[dx,dy]=directions[id];
@@ -13,7 +13,7 @@ function follow(s,x,y,heading,hand){
     }
     heading=next;x+=directions[next][0];y+=directions[next][1];
   }
-  return [x,y];
+  return [x,y,heading];
 }
 export function outsideContact(s,b,bouncing=false){
   const e=s.engine,sx=b.vx/20,sy=b.vy/20;
@@ -26,7 +26,7 @@ export function outsideContact(s,b,bouncing=false){
     else if(!solid(s,x,y+1))first=1;
     else if(!solid(s,x+1,y))first=0;
   }
-  const [ax,ay]=follow(s,x,y,first,1),[bx,by]=follow(s,x,y,(first+2)%4,-1);
+  const [ax,ay]=walkContour(s,x,y,first,1,3),[bx,by]=walkContour(s,x,y,(first+2)%4,-1,3);
   const tangent=e.surfaceAngle(ay-by,ax-bx),normal=tangent+1.570795;
   b.x=e.x.value=e.surfaceCos(normal)+cx+(bouncing?0:sx);
   b.y=e.y.value=e.surfaceSin(normal)+cy+(bouncing?0:sy);

@@ -4,8 +4,17 @@ import {gzipSync} from "node:zlib";
 import {createHash} from "node:crypto";
 const [, ,output,...inputs]=process.argv;
 if(!output||!inputs.length)throw Error("Pass an output path and one or more original trace files");
+const contours=inputs[0]==="--contours";
+if(contours)inputs.shift();
 const fixtures=inputs.map(file=>{
   const bytes=readFileSync(file),r=JSON.parse(bytes);
+  if(contours){
+    if(!r.cruise?.length)throw Error("Missing original ground path in "+file);
+    const first=r.cruise[0],tick=first[0];
+    return {file:basename(file),sha256:createHash("sha256").update(bytes).digest("hex"),
+      trigger:r.events[0][1],terrain:r.terrain,heading:r.cruiseStart[12],hand:r.cruiseStart[13]?-1:1,
+      path:r.cruise.map(row=>[row[0]-tick,row[2],row[3],row[4]])};
+  }
   const start=r.frames[0]?.[0]??r.jets?.[0][0]??r.earth[0][0];
   const record={file:basename(file),sha256:createHash("sha256").update(bytes).digest("hex"),
     seed:r.seed,trigger:r.events[0][1].toLowerCase(),tanks:r.tanks,turn:r.turn,terrain:r.terrain,angle:r.events[0][4],power:r.events[0][5],
