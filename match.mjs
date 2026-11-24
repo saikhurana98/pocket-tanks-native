@@ -2,15 +2,17 @@ import offsets from "./engine/tank-offsets.json" with {type:"json"};
 
 // Values from the Original weapon pack, SingleShotExplosion and BigShotExplosion.
 export const weapons=[
-  {name:"Single Shot",radius:22,damage:60,trail:[16,255,255],effect:1},
-  {name:"Big Shot",radius:50,damage:30,trail:[255,0,255],effect:2}
+  {name:"Single Shot",radius:22,damage:60,trail:[16,255,255],effect:1,spread:[0],trailLength:11,colorLength:12,atlas:"blast"},
+  {name:"Big Shot",radius:50,damage:30,trail:[255,0,255],effect:2,spread:[0],trailLength:11,colorLength:12,atlas:"big-blast"},
+  {name:"3 Shot",radius:25,damage:20,trail:[97,227,189],effect:1,spread:[-4,0,4],trailLength:12,colorLength:10,atlas:"three-blast"},
+  {name:"5 Shot",radius:20,damage:20,trail:[97,227,189],effect:1,spread:[-4,-2,0,2,4],trailLength:12,colorLength:12,atlas:"five-blast"}
 ];
 export const volleys=10;
 export function openShop(state){
   // The supported pool supplies twenty choices for the original ten volleys.
   state.pool=Array.from({length:2*volleys},(_,i)=>i%weapons.length);
   state.draft=[[],[]];
-  state.ammo=[[0,0],[0,0]];
+  state.ammo=state.tanks.map(()=>weapons.map(()=>0));
 }
 export function pickWeapon(state,slot){
   if(!state.pool||state.pool[slot]==null)return false;
@@ -66,8 +68,8 @@ export function hitsTank(state,x,y){
     Math.abs(x-cx)<=20 && Math.abs(y-cy)<=20 &&
     (state.engine.insideHull(x,y,address,8)||state.engine.insideHull(x,y,address+64,4)));
 }
-export function applyBlast(state,phase){
-  const hit=state.impact,weapon=weapons[state.weapon],front=Math.min(phase,weapon.radius-1);
+export function applyBlast(state,hit){
+  const weapon=weapons[state.weapon],front=Math.min(hit.phase,weapon.radius-1);
   state.tanks.forEach((pose,id)=>{
     if(hit.struck[id])return;
     const [cx,cy]=damageCenter(pose);

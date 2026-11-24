@@ -2,6 +2,7 @@ const assert=require("node:assert/strict");
 const playwright=require(process.env.PLAYWRIGHT_MODULE||"playwright-core");
 const golden=require("./captures/presentation.json");
 const matchGolden=require("./captures/match-presentation.json");
+const spreadGolden=require("./captures/spread-presentation.json");
 const url=process.argv[2];
 if(!url)throw Error("Pass the native Target Practice URL");
 
@@ -16,11 +17,10 @@ async function pixelParity(page){
     const digest=async pixels=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",pixels)),x=>x.toString(16).padStart(2,"0")).join("");
     const frame=async()=>{display.draw(s,ui,0);return digest(display.ctx.getImageData(0,0,800,600).data)};
     const poses=gold.groundPoses.map(([x])=>groundPose(s,x));
+    display.bind(s);
     const initial=await frame();launch(s,60,20);
     for(let i=0;i<1000&&s.turn===0;i++){
-      const impact=s.impact,revision=s.revision;step(s);
-      if(impact&&revision!==s.revision)display.updateGround(s,impact.x);
-      if(impact&&!s.impact)display.updateGround(s,impact.x,true);
+      step(s);
     }
     const after=await frame();
     const fx=document.createElement("canvas");fx.width=46;fx.height=46;const g=fx.getContext("2d",{willReadFrequently:true});
@@ -60,6 +60,25 @@ async function pixelParity(page){
   assert.equal(match.matchField,matchGolden.matchField,"Two-player opening field differs from original");
   assert.deepEqual(match.blast,matchGolden.blast.map(f=>f.sha256));
   console.log("PASS original two-player field and "+match.blast.length+" captured Big Shot blast frames");
+  const spread=await page.evaluate(async reference=>{
+    const {loadArt}=await import("./presentation.mjs");
+    const art=await loadArt(),result=[];
+    for(const [atlas,films] of Object.entries(reference)){
+      for(const {size,phases} of films){
+        const canvas=document.createElement("canvas");canvas.width=canvas.height=size;
+        const ctx=canvas.getContext("2d",{willReadFrequently:true});
+        for(const {phase} of phases){
+          ctx.clearRect(0,0,size,size);
+          ctx.drawImage(art.images[atlas],phase%8*size,Math.floor(phase/8)*size,size,size,0,0,size,size);
+          const hash=await crypto.subtle.digest("SHA-256",ctx.getImageData(0,0,size,size).data);
+          result.push(Array.from(new Uint8Array(hash),x=>x.toString(16).padStart(2,"0")).join(""));
+        }
+      }
+    }
+    return result;
+  },spreadGolden);
+  assert.deepEqual(spread,Object.values(spreadGolden).flat().flatMap(f=>f.phases.map(p=>p.sha256)));
+  console.log("PASS "+spread.length+" spread-weapon blast phases from the original framebuffer");
 }
 
 async function exercise(browser,touch){
@@ -94,7 +113,10 @@ async function exercise(browser,touch){
     await page.waitForFunction(()=>window.fx.length>=2);assert((await page.evaluate(()=>window.fx)).every(v=>v>0));
     await tap(405,493);await status("Player 1");await click("#reset");assert.deepEqual(await pixel(),initial);
     await tap(248,490);await status("Moving");await status("Player 1");
-    await tap(311,566);assert(await page.locator("#choose").isVisible());await tap(310,471);
+    for(const [row,name] of [[2,"3 Shot"],[3,"5 Shot"],[0,"Single Shot"]]){
+      await tap(311,566);assert(await page.locator("#choose").isVisible());await tap(310,471+row*23);
+      assert.equal(await page.locator("#fire").getAttribute("aria-label"),"Fire "+name);
+    }
     await click("#full");await page.waitForFunction(()=>document.fullscreenElement||document.querySelector(".expanded"));
     await tap(552,574);assert.equal(await page.locator("#power").getAttribute("aria-label"),"Adjust power, 21");
     await tap(770,590);assert(await page.locator("#no").isVisible());await click("#full");await tap(440,288);
@@ -107,20 +129,23 @@ async function exercise(browser,touch){
     await page.locator("#power").focus();
     for(let p=20;p<57;p++)await page.keyboard.press("ArrowUp");
     assert.equal(await page.locator("#power").getAttribute("aria-label"),"Adjust power, 57");
+    const fired=[];
     for(let n=0;n<20;n++){
       const ready=await page.locator("#status").textContent();
       assert(ready.includes("Volley "+(1+Math.floor(n/2))+" ·"),ready);
-      assert.match(await page.locator("#fire").getAttribute("aria-label"),/^Fire (Single Shot|Big Shot)$/);
+      fired.push(await page.locator("#fire").getAttribute("aria-label"));
       await tap(405,493);
       await status("Shot in flight");
       await status(n===19?"Game over":"Player "+(n%2===0?2:1));
       if(n===0)assert.match(await page.locator("#status").textContent(),/Score 60 to 0$/);
     }
+    for(const name of ["Single Shot","Big Shot","3 Shot","5 Shot"])
+      assert.equal(fired.filter(label=>label==="Fire "+name).length,5,name+" shots consumed");
     assert(await page.locator("#fire").isHidden());
     await tap(320,253);await status("Weapon shop");await tap(402,423);await status("Player 1");
     await click("#practice");await status("Player 1");
     assert.equal(await page.locator("#fire").getAttribute("aria-label"),"Fire Single Shot");
-    console.log("PASS original ten-volley match, manual and random draft, both weapons, game over, rematch and return to practice");
+    console.log("PASS ten-volley match, manual and random draft, five rounds of each of four weapons, game over, rematch and return to practice");
     assert.deepEqual(errors,[]);assert(!requests.some(([s,u])=>s>=400||/\.(exe|dll)(\?|$)|boxedwine/i.test(u)));
     console.log("PASS "+(touch?"touch / GPU disabled":"desktop")+" fitted and stretched pointer mapping, turns, blast, movement, audio, weapon menu, fullscreen and reset");
   }finally{await page.close()}

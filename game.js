@@ -6,10 +6,11 @@ const $=id=>document.getElementById(id);
 const main=document.querySelector("main"),board=$("board");
 const clamp=(n,lo,hi)=>Math.max(lo,Math.min(hi,n));
 const wrap=n=>(n%360+360)%360;
+const weaponButtons=["choose","big","three","five"];
 const labels={angleleft:"Increase angle",angleright:"Decrease angle",powerleft:"Decrease power",powerright:"Increase power",
   moveleft:"Move tank left",moveright:"Move tank right",angle:"Adjust aim",power:"Adjust power",move:"Select movement direction",
   fire:"Fire Single Shot",weapon:"Choose weapon",weaponup:"Previous weapon",weapondown:"Next weapon",
-  exit:"End game",yes:"End game",no:"Continue playing",choose:"Select Single Shot",big:"Select Big Shot",random:"Random weapons"};
+  exit:"End game",yes:"End game",no:"Continue playing",random:"Random weapons"};
 const ui={hover:null,pressed:null,mode:null,dialog:false,ended:false,turnTime:0};
 let engine,scene,matchScene,display,s,clock,lag=0,hold,gesture,adjust,lastPoint,sound=true,context,sounds;
 const music=new Audio("./audio/ingame.mp3");music.preload="none";music.loop=true;music.volume=.4;
@@ -30,18 +31,18 @@ async function effect(which){
   const b=await sounds;if(!sound||!b||context.state!=="running")return;
   const src=context.createBufferSource();src.buffer=b[which];src.connect(context.destination);src.start();
 }
-function busy(){return s.ball||s.impact||s.move}
+function busy(){return s.inVolley||s.move}
 function stopHold(){clearTimeout(hold);clearInterval(hold);hold=null}
 function finishAdjust(){
   adjust=null;ui.mode=null;
   if(document.pointerLockElement===board)document.exitPointerLock();
 }
 function sync(){
-  let status=ui.ended?"Game ended":s.move?"Moving":s.ball?"Shot in flight":s.impact?"Impact":"Player "+(s.turn+1)+" · Ready to fire";
+  let status=ui.ended?"Game ended":s.move?"Moving":s.ball?"Shot in flight":s.inVolley?"Impact":"Player "+(s.turn+1)+" · Ready to fire";
   if(s.pool)status="Weapon shop · Player "+((s.draft[0].length+s.draft[1].length)%2+1)+" picks";
   else if(s.finished){
     const [a,b]=s.scores;status="Game over · "+(a===b?"Tie":"Player "+(a>b?1:2)+" wins")+" · "+a+" to "+b;
-  }else if(s.mode==="match")status+=" · Volley "+Math.min(volleys,Math.floor((s.shots-(s.ball||s.impact?1:0))/2)+1)+" · Score "+s.scores.join(" to ");
+  }else if(s.mode==="match")status+=" · Volley "+Math.min(volleys,Math.floor((s.shots-(s.inVolley?1:0))/2)+1)+" · Score "+s.scores.join(" to ");
   if($("status").textContent!==status)$("status").textContent=status;
   $("angle").setAttribute("aria-label","Adjust aim, "+Math.round(ui.angles[s.turn])%360+" degrees");
   $("power").setAttribute("aria-label","Adjust power, "+Math.round(ui.powers[s.turn]));
@@ -50,7 +51,7 @@ function sync(){
   for(const button of $("targets").children){
     const id=button.id;
     const slot=id.startsWith("pick-")?Number(id.slice(5)):-1;
-    const stock=id==="choose"?0:id==="big"?1:-1;
+    const stock=weaponButtons.indexOf(id);
     if(slot>=0||id==="random")button.hidden=!s.pool||(slot>=0&&s.pool[slot]===null);
     else if(s.pool||ui.ended)button.hidden=true;
     else if(ui.dialog||s.finished)button.hidden=id!=="yes"&&id!=="no";
@@ -72,6 +73,8 @@ function reset(mode=s?.mode||"practice"){
   stopHold();finishAdjust();gesture=null;lag=0;clock=undefined;
   const range=mode==="match"?matchScene:scene;
   s=setup(engine,range,mode);
+  s.onContact=()=>effect(weapons[s.weapon].effect);
+  display.bind(s);
   if(mode==="match")openShop(s);
   Object.assign(ui,{angles:s.tanks.map(p=>wrap(360-p[3])),powers:s.tanks.map(p=>p[4]),turnTime:performance.now(),
     hover:null,pressed:null,mode:null,dialog:false,ended:false});
@@ -96,8 +99,9 @@ function hit(p){
   if(s.finished)return p.y>=239&&p.y<=273?(p.x>=278&&p.x<=374?"yes":p.x>=423&&p.x<=495?"no":null):null;
   if(ui.dialog)return p.y>=277&&p.y<=299?(p.x>=329&&p.x<=391?"yes":p.x>=409&&p.x<=471?"no":null):null;
   if(ui.mode==="weapon"){
-    if(p.x<245||p.x>377||p.y<462||p.y>=508)return "dismiss";
-    return p.y>=485?"big":"choose";
+    const index=Math.floor((p.y-462)/23);
+    if(p.x<245||p.x>377||!weaponButtons[index])return "dismiss";
+    return weaponButtons[index];
   }
   if(p.x>746&&p.y>=581)return "exit";
   for(const id of ["angleleft","angleright","powerleft","powerright","moveleft","moveright","fire","angle","move","power","weaponup","weapondown","weapon"]){
@@ -144,12 +148,15 @@ function action(id,p){
     case "weapon":ui.mode="weapon";break;
     case "dismiss":ui.mode=null;break;
     case "weaponup":case "weapondown":{
-      const next=1-s.selected[turn];
-      if(s.mode==="practice"||s.ammo[turn][next])s.selected[turn]=next;
+      const direction=id==="weaponup"?-1:1;
+      for(let i=1;i<=weapons.length;i++){
+        const next=(s.selected[turn]+i*direction+weapons.length)%weapons.length;
+        if(s.mode==="practice"||s.ammo[turn][next]){s.selected[turn]=next;break}
+      }
       break;
     }
-    case "choose":case "big":{
-      const next=id==="big"?1:0;
+    case "choose":case "big":case "three":case "five":{
+      const next=weaponButtons.indexOf(id);
       if(s.mode==="practice"||s.ammo[turn][next])s.selected[turn]=next;
       ui.mode=null;break;
     }
@@ -242,12 +249,9 @@ function frame(t){
   const dt=clock===undefined?0:Math.min(.1,(t-clock)/1000);clock=t;
   if(!ui.dialog&&!ui.ended){
     lag+=dt;while(lag>=DT){
-      const impact=s.impact,rev=s.revision,ball=s.ball,moving=s.move,turn=s.turn;
+      const ball=s.ball,active=s.inVolley,moving=s.move,turn=s.turn,score=s.scores[s.turn];
       step(s);
-      if(ball&&s.impact){effect(weapons[s.weapon].effect);sync()}
-      if(impact&&rev!==s.revision)display.updateGround(s,impact.x);
-      if(impact&&!s.impact)display.updateGround(s,impact.x,true);
-      if(turn!==s.turn||moving&&!s.move||impact&&!s.impact||ball&&!s.ball){ui.turnTime=t;sync()}
+      if(turn!==s.turn||moving&&!s.move||active!==s.inVolley||ball&&!s.ball||score!==s.scores[turn]){ui.turnTime=t;sync()}
       lag-=DT;
     }
     display.draw(s,ui,t);
@@ -263,7 +267,8 @@ try{
     const {x,y,w,h}=display.buttons[id];target(id,x,y,w,h);
   }
   target("exit",748,582,52,18);target("yes",329,277,63,22);target("no",409,277,63,22);
-  target("choose",245,462,132,23);target("big",245,485,132,23);target("random",360,408,88,32);
+  weaponButtons.forEach((id,i)=>{labels[id]="Select "+weapons[i].name;target(id,245,462+i*23,132,23)});
+  target("random",360,408,88,32);
   for(let i=0;i<20;i++){
     const id="pick-"+i;labels[id]="Draft "+weapons[i%weapons.length].name;
     target(id,262+158*Math.floor(i/10),124+i%10*27,134,24);

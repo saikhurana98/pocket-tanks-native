@@ -1,9 +1,10 @@
 import {weapons,volleys} from "./match.mjs";
-const sources = ["range","sky","aim","arrows","angle","power","bar","controls","blast","hulls","barrels","end","weapon","second","match","big-blast","shop","match-range"];
+const pngs=["match","big-blast","shop","match-range","arsenal","three-blast","five-blast"];
+const sources = ["range","sky","aim","arrows","angle","power","bar","controls","blast","hulls","barrels","end","weapon","second",...pngs];
 export async function loadArt() {
   const images = await Promise.all(sources.map(async name => {
     const image = new Image();
-    image.src = "./art/"+name+(["match","big-blast","shop","match-range"].includes(name)?".png":".webp");
+    image.src = "./art/"+name+(pngs.includes(name)?".png":".webp");
     await image.decode();
     return [name,image];
   }));
@@ -38,23 +39,32 @@ export class RangeDisplay {
       this.painted.fill(i%2,offset,offset+n);offset+=n;
     }
   }
-  updateGround(state,center,settle=false){
+  bind(state){
+    state.onBlastStep=(b,eroded)=>{if(eroded)this.updateGround(state,b.x)};
+    state.onDirtStep=changes=>this.dropSoil(state,changes);
+  }
+  dropSoil(state,changes){
+    const rgba=new Uint32Array(this.pixels.data.buffer),sky=new Uint32Array(this.sky.buffer);
+    let left=799,right=0,minY=449,maxY=0;
+    for(const [x,top,bottom] of changes){
+      left=Math.min(left,x);right=Math.max(right,x);minY=Math.min(minY,top);maxY=Math.max(maxY,bottom);
+      for(let y=bottom;y>=top;y--){
+        const i=y*800+x;this.painted[i]=state.solid[i];
+        rgba[i]=this.painted[i]?rgba[i-800]:sky[y];
+      }
+    }
+    this.g.putImageData(this.pixels,0,0,left,minY,right-left+1,maxY-minY+1);
+  }
+  updateGround(state,center){
     const radius=weapons[state.weapon].radius;
     const left=Math.max(0,Math.trunc(center)-radius+1),right=Math.min(799,Math.trunc(center)+radius);
     const rgba=new Uint32Array(this.pixels.data.buffer),sky=new Uint32Array(this.sky.buffer);
     for(let x=left;x<=right;x++){
-      let dest=449;
       for(let y=449;y>=0;y--){
         const i=y*800+x;
         if(!state.solid[i]){
           if(this.painted[i]){rgba[i]=sky[y];this.painted[i]=0}
-          continue;
         }
-        if(settle && dest!==y){
-          rgba[dest*800+x]=rgba[i];this.painted[dest*800+x]=1;
-          rgba[i]=sky[y];this.painted[i]=0;
-        }
-        dest--;
       }
     }
     this.g.putImageData(this.pixels,0,0,left,0,right-left+1,450);
@@ -91,14 +101,14 @@ export class RangeDisplay {
     this.ctx.restore();
     this.tile("hulls",k+id*72,16,48,48,x-24,y-28);
   }
-  projectile(state) {
-    // The original trail has eleven intensity levels and two-pixel square samples.
-    const positions=state.trail;
+  projectile(weapon,ball) {
+    const positions=ball.trail;
     if(!positions.length)return;
     const samples=[];
-    for(let i=0;i<11;i++){
-      const p=positions[positions.length-1-(10-i)*2];
-      if(p)samples.push([Math.trunc(p[0]),Math.trunc(p[1]),24+i*23]);
+    const length=weapon.trailLength;
+    for(let i=0;i<length;i++){
+      const p=positions[positions.length-1-(length-1-i)*2];
+      if(p)samples.push([Math.trunc(p[0]),Math.trunc(p[1]),1+(i+1)*Math.floor(255/length)]);
     }
     if(!samples.length)return;
     const left=Math.max(0,Math.min(...samples.map(p=>p[0]))),top=Math.max(0,Math.min(...samples.map(p=>p[1])));
@@ -108,7 +118,7 @@ export class RangeDisplay {
     for(const [x,y,a] of samples)for(let j=y;j<y+2;j++)for(let i=x;i<x+2;i++){
       if(i<left||j<top||i>=right||j>=bottom)continue;
       const k=((j-top)*pixels.width+i-left)*4;
-      for(let c=0;c<3;c++){const color=weapons[state.weapon].trail[c];pixels.data[k+c]=Math.trunc((base[k+c]*(255-a)+color*a)/255)}
+      for(let c=0;c<3;c++){const color=weapon.trail[c];pixels.data[k+c]=Math.trunc((base[k+c]*(255-a)+color*a)/255)}
     }
     this.ctx.putImageData(pixels,left,top);
   }
@@ -122,8 +132,8 @@ export class RangeDisplay {
   shop(s,ui){
     const c=this.ctx;c.drawImage(this.art.shop,0,0);
     const item=(w,x,y)=>{
-      c.drawImage(this.art.match,120,52+w*22,22,22,x,y,22,22);
-      c.drawImage(this.art.match,150,100+w*22,85,22,x+25,y,85,22);
+      c.drawImage(this.art.arsenal,1,w*24,22,22,x,y,22,22);
+      c.drawImage(this.art.arsenal,140,w*24,100,23,x+25,y,100,23);
     };
     s.pool.forEach((w,i)=>{if(w!==null)item(w,262+158*Math.floor(i/10),124+(i%10)*27)});
     s.draft.forEach((row,player)=>row.forEach((w,j)=>item(w,28+player*605,124+j*27)));
@@ -141,17 +151,15 @@ export class RangeDisplay {
     if(s.turn===1){c.drawImage(this.art.second,0,1,800,150,0,450,800,150);c.drawImage(this.art.second,0,0,800,1,0,31,800,1)}
     c.save();c.beginPath();c.rect(0,0,800,450);c.clip();
     s.tanks.forEach((p,i)=>this.tank(p,i,Math.round(ui.angles[i])%360));
-    const busy=s.ball||s.impact||s.move;
+    const busy=s.inVolley||s.move;
     if(!busy&&!ui.mode&&!s.finished){
       const id=s.turn,[x,y]=s.tanks[id];
       const phase=t-ui.turnTime<25?60:Math.floor((t-ui.turnTime)/25)%60;
       this.tile("arrows",phase+id*72,12,26,60,x-13,y-(id?65:60));
     }
-    if(s.ball)this.projectile(s);
-    if(s.impact){
-      const radius=weapons[s.weapon].radius,size=radius*2+2;
-      if(s.impact.phase<radius+11)this.tile(s.weapon?"big-blast":"blast",s.impact.phase,8,size,size,Math.trunc(s.impact.x)-radius,Math.trunc(s.impact.y)-radius);
-    }
+    const weapon=weapons[s.weapon],{radius}=weapon,size=radius*2+2;
+    for(const ball of s.balls)this.projectile(weapon,ball);
+    for(const b of s.blasts)this.tile(weapon.atlas,b.phase,8,size,size,Math.trunc(b.x)-radius,Math.trunc(b.y)-radius);
     c.restore();
     const hot=busy?null:ui.pressed||ui.hover,btn=this.buttons[hot];
     if(btn){const [sx,sy]=btn.states[ui.pressed?1:0];c.drawImage(this.art.controls,sx,sy,btn.w,btn.h,btn.x,btn.y,btn.w,btn.h)}
@@ -170,11 +178,11 @@ export class RangeDisplay {
       c.fillStyle="#fff";for(const [a,b,w,h] of [[-8,0,5,1],[4,0,5,1],[0,-8,1,5],[0,4,1,5]])c.fillRect(dx+a,dy+b,w,h);
     }
     const selected=s.selected[s.turn];
-    if(selected===1)c.drawImage(this.art.match,120,28,134,23,244,555,134,23);
+    if(selected>0)c.drawImage(this.art.arsenal,0,24*selected,134,23,244,555,134,23);
     if(s.scores[0])this.score(s.scores[0],false);
     if(s.scores[1])this.score(s.scores[1],true);
     if(s.mode==="match"){
-      const volley=s.finished?volleys:Math.min(volleys-1,Math.floor((s.shots-(s.ball||s.impact?1:0))/2));
+      const volley=s.finished?volleys:Math.min(volleys-1,Math.floor((s.shots-(s.inVolley?1:0))/2));
       c.drawImage(this.art.match,0,26+volley*20,120,20,340,0,120,20);
       this.tile("power",s.moves[s.turn],16,42,20,264,495,43);
       if(s.finished){
@@ -187,13 +195,9 @@ export class RangeDisplay {
       c.fillStyle="#000";c.fillRect(245,462,132,110);
       for(let i=0;i<weapons.length;i++){
         if(s.mode==="match"&&!s.ammo[s.turn][i])continue;
-        const y=462+i*23;c.drawImage(this.art.match,120,52+i*22,131,22,245,y,131,22);
-        if(i===1||i===selected){
-          // The original highlights the current item in yellow.
-          const im=c.getImageData(274,y,102,22);
-          for(let k=0;k<im.data.length;k+=4)im.data[k+2]=i===selected?0:im.data[k+1];
-          c.putImageData(im,274,y);
-        }
+        const y=462+i*23,width=[70,52,40,40][i];
+        c.drawImage(this.art.arsenal,1,i*24,22,22,245,y,22,22);
+        c.drawImage(this.art.arsenal,i===selected?254:140,i*24,width,23,323-Math.ceil(width/2),y,width,23);
       }
     }
     if(ui.dialog)c.drawImage(this.art.end,280,205);

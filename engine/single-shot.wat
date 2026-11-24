@@ -1,10 +1,54 @@
 (module
   ;; 32-bit Pocket Tanks Deluxe, SingleShotBullet path.
   ;; 0x4398f0 uses the game CRT's sin and cos. Angles here use screen coordinates.
-  (import "math" "sin" (func $sin (param f64) (result f64)))
-  (import "math" "cos" (func $cos (param f64) (result f64)))
   (import "math" "atan2" (func $atan2 (param f64 f64) (result f64)))
   (memory (export "memory") 6)
+  ;; CRT sine/cosine game-angle path, 0x4c6c65..0x4c6da6 and
+  ;; 0x4c6e35..0x4c6f76. Both routines use the same 64 table rows.
+  ;; The four doubles in each row are at offsets 0, 8, 16, and 24.
+  (func $trig (param $x f64) (param $shift i32) (result f64)
+    (local $n f64) (local $row i32)
+    (local $t0 f64) (local $t1 f64) (local $t2 f64) (local $t3 f64)
+    (local $r1 f64) (local $low f64) (local $r f64) (local $square f64)
+    (local $err f64) (local $gain f64) (local $base f64) (local $small f64)
+    (local $mid f64) (local $main f64) (local $sinePoly f64) (local $cosinePoly f64) (local $tail f64)
+    (if (f64.lt (f64.abs (local.get $x)) (f64.const 1e-30))
+      (then (return (select (f64.const 1) (local.get $x) (local.get $shift)))))
+    (local.set $n (f64.nearest (f64.mul (local.get $x) (f64.const 10.185916357881302))))
+    (local.set $row (i32.add (i32.const 361000) (i32.shl
+      (i32.and (i32.add (i32.trunc_f64_s (local.get $n)) (local.get $shift)) (i32.const 63)) (i32.const 5))))
+    (local.set $t0 (f64.load (local.get $row)))
+    (local.set $t1 (f64.load offset=8 (local.get $row)))
+    (local.set $t2 (f64.load offset=16 (local.get $row)))
+    (local.set $t3 (f64.load offset=24 (local.get $row)))
+    (local.set $r1 (f64.sub (local.get $x) (f64.mul (f64.const 0.09817477042088285) (local.get $n))))
+    (local.set $low (f64.mul (local.get $n) (f64.const 3.798187816439979e-12)))
+    (local.set $r (f64.sub (local.get $r1) (local.get $low)))
+    (local.set $err (f64.sub (f64.mul (local.get $n) (f64.const 1.2639164054974691e-22))
+      (f64.sub (f64.sub (local.get $r1) (local.get $r)) (local.get $low))))
+    (local.set $square (f64.mul (local.get $r) (local.get $r)))
+    (local.set $gain (f64.add (local.get $t0) (local.get $t3)))
+    (local.set $base (f64.mul (local.get $t0) (local.get $r)))
+    (local.set $small (f64.mul (local.get $t3) (local.get $r)))
+    (local.set $mid (f64.add (local.get $small) (local.get $t1)))
+    (local.set $main (f64.add (local.get $base) (local.get $mid)))
+    (local.set $sinePoly (f64.add
+      (f64.add (f64.mul (f64.const 0.008333333333333333) (local.get $square)) (f64.const -0.16666666666666666))
+      (f64.mul (f64.add (f64.mul (f64.mul (f64.const 0.0000027557319223985893) (local.get $r1)) (local.get $r))
+        (f64.const -0.0001984126984126984)) (f64.mul (local.get $square) (local.get $square)))))
+    (local.set $cosinePoly (f64.add
+      (f64.add (f64.mul (f64.const 0.041666666666666664) (local.get $square)) (f64.const -0.5))
+      (f64.mul (f64.add (f64.mul (f64.mul (f64.const 0.0000248015873015873) (local.get $r1)) (local.get $r))
+        (f64.const -0.001388888888888889)) (f64.mul (local.get $square) (local.get $square)))))
+    (local.set $tail (f64.add (f64.mul (local.get $err) (f64.sub (f64.mul (local.get $t1) (local.get $r)) (local.get $gain))) (local.get $t2)))
+    (local.set $tail (f64.add (local.get $tail) (f64.add (f64.sub (local.get $t1) (local.get $mid)) (local.get $small))))
+    (local.set $tail (f64.add (local.get $tail) (f64.add (f64.sub (local.get $mid) (local.get $main)) (local.get $base))))
+    (local.set $tail (f64.add (local.get $tail) (f64.mul (local.get $sinePoly)
+      (f64.mul (f64.mul (local.get $gain) (local.get $r)) (local.get $square)))))
+    (local.set $tail (f64.add (local.get $tail) (f64.mul (local.get $cosinePoly) (f64.mul (local.get $t1) (local.get $square)))))
+    (f64.add (local.get $main) (local.get $tail)))
+  (func $sin (param $x f64) (result f64) (call $trig (local.get $x) (i32.const 0)))
+  (func $cos (param $x f64) (result f64) (call $trig (local.get $x) (i32.const 16)))
   (global $x (export "x") (mut f64) (f64.const 0))
   (global $y (export "y") (mut f64) (f64.const 0))
   (global $vx (export "vx") (mut f64) (f64.const 0))
@@ -74,8 +118,8 @@
         (then (local.set $j (i32.sub (local.get $j) (i32.const 1)))
           (local.set $limit (i32.sub (local.get $limit) (i32.mul (local.get $j) (i32.const 2))))))
       (br_if $octant (i32.le_s (local.get $i) (local.get $j)))))
-  (global $blastAge (mut f64) (f64.const 0))
-  (global $phase (mut i32) (i32.const 0))
+  (global $blastAge (export "blastAge") (mut f64) (f64.const 0))
+  (global $phase (export "phase") (mut i32) (i32.const 0))
   (global $radius (mut i32) (i32.const 22))
   ;; Convex polygon test at 0x433d60. Edge coordinates count as hits.
   (func (export "insideHull") (param $x i32) (param $y i32) (param $base i32) (param $count i32) (result i32)
@@ -96,6 +140,17 @@
     (i32.const 1))
   (func (export "setBlastRadius") (param $size i32)
     (global.set $radius (local.get $size)))
+  ;; 0x447de0..0x447e15 copies a falling section down one pixel, bottom first.
+  (func (export "dropColumn") (param $x i32) (param $top i32) (param $bottom i32)
+    (local $at i32) (local $first i32)
+    (local.set $first (i32.add (local.get $x) (i32.mul (local.get $top) (i32.const 800))))
+    (local.set $at (i32.add (local.get $x) (i32.mul (local.get $bottom) (i32.const 800))))
+    (block $clear (loop $copy
+      (br_if $clear (i32.le_s (local.get $at) (local.get $first)))
+      (i32.store8 (local.get $at) (i32.load8_u (i32.sub (local.get $at) (i32.const 800))))
+      (local.set $at (i32.sub (local.get $at) (i32.const 800)))
+      (br $copy)))
+    (i32.store8 (local.get $first) (i32.const 0)))
   ;; 0x44c40a..0x44c465 and 0x44c595..0x44c5bf. The integer conversion
   ;; occurs separately on each coordinate and again after the square root.
   (func (export "blastDamage") (param $cx f64) (param $cy f64)
@@ -159,4 +214,70 @@
     (local.set $p (f64.div (f64.sub (f64.sqrt (f64.add
       (f64.mul (global.get $vy) (global.get $vy)) (f64.mul (global.get $vx) (global.get $vx)))) (f64.const 1.1)) (f64.const 0.11)))
     (select (local.get $p) (f64.const 0.0001) (f64.ne (local.get $p) (f64.const 0))))
+  ;; Original CRT table at 0x4e44c0, one row per pi/32.
+  (data (i32.const 361000)
+    "\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\f0\3f"
+    "\31\6d\6d\17\2e\b9\73\bf\2c\b4\29\bc\a6\17\b9\3f\00\00\00\e0\18\27\3e\bc\00\00\00\00\00\00\f0\3f"
+    "\fb\69\14\01\06\ad\93\bf\0b\a6\69\3c\b8\f8\c8\3f\00\00\00\c0\19\6d\62\bc\00\00\00\00\00\00\f0\3f"
+    "\5a\22\9d\93\ea\0b\a6\bf\06\9f\d5\2e\06\94\d2\3f\00\00\00\a0\8d\d2\75\bc\00\00\00\00\00\00\f0\3f"
+    "\cf\95\6b\86\a1\7c\b3\bf\63\a9\ae\a6\e2\7d\d8\3f\00\00\00\e0\ed\2c\67\bc\00\00\00\00\00\00\f0\3f"
+    "\79\12\fa\73\68\3a\be\bf\3b\f6\06\38\5d\2b\de\3f\00\00\00\20\89\0d\5e\3c\00\00\00\00\00\00\f0\3f"
+    "\74\79\c5\5b\67\92\c5\bf\c8\68\ae\39\3b\c7\e1\3f\00\00\00\20\dd\25\8b\3c\00\00\00\00\00\00\f0\3f"
+    "\fd\a2\ab\53\fe\0d\cd\bf\d6\1d\09\25\f3\4c\e4\3f\00\00\00\20\6a\07\68\3c\00\00\00\00\00\00\f0\3f"
+    "\32\ef\fc\99\79\82\ca\3f\cd\3b\7f\66\9e\a0\e6\3f\00\00\00\20\34\dd\8b\bc\00\00\00\00\00\00\e0\3f"
+    "\58\77\24\94\cc\33\c1\3f\41\17\15\6b\80\bc\e8\3f\00\00\00\20\e1\c5\82\bc\00\00\00\00\00\00\e0\3f"
+    "\87\8c\e6\9a\b3\73\ac\3f\a3\a1\0e\29\66\9b\ea\3f\00\00\00\e0\30\f6\39\3c\00\00\00\00\00\00\e0\3f"
+    "\4e\9c\90\7f\2c\4a\9d\bf\b1\bd\80\f1\b2\38\ec\3f\00\00\00\80\b1\e0\76\bc\00\00\00\00\00\00\e0\3f"
+    "\75\5a\45\65\75\08\be\bf\46\8d\32\cf\6b\90\ed\3f\00\00\00\20\e6\57\74\3c\00\00\00\00\00\00\e0\3f"
+    "\2d\f8\ac\76\31\a0\a4\3f\da\2d\c6\56\41\9f\ee\3f\00\00\00\e0\b1\60\87\3c\00\00\00\00\00\00\d0\3f"
+    "\d5\67\59\0e\1f\1d\ac\bf\b0\5c\f7\cf\97\62\ef\3f\00\00\00\20\17\62\75\3c\00\00\00\00\00\00\d0\3f"
+    "\50\2f\59\0f\65\a1\9b\bf\26\25\d1\a3\8d\d8\ef\3f\00\00\00\40\f6\7d\88\bc\00\00\00\00\00\00\c0\3f"
+    "\00\00\00\00\00\00\00\00\00\00\00\00\00\00\f0\3f\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00"
+    "\50\2f\59\0f\65\a1\9b\3f\26\25\d1\a3\8d\d8\ef\3f\00\00\00\40\f6\7d\88\bc\00\00\00\00\00\00\c0\bf"
+    "\d5\67\59\0e\1f\1d\ac\3f\b0\5c\f7\cf\97\62\ef\3f\00\00\00\20\17\62\75\3c\00\00\00\00\00\00\d0\bf"
+    "\2d\f8\ac\76\31\a0\a4\bf\da\2d\c6\56\41\9f\ee\3f\00\00\00\e0\b1\60\87\3c\00\00\00\00\00\00\d0\bf"
+    "\75\5a\45\65\75\08\be\3f\46\8d\32\cf\6b\90\ed\3f\00\00\00\20\e6\57\74\3c\00\00\00\00\00\00\e0\bf"
+    "\4e\9c\90\7f\2c\4a\9d\3f\b1\bd\80\f1\b2\38\ec\3f\00\00\00\80\b1\e0\76\bc\00\00\00\00\00\00\e0\bf"
+    "\87\8c\e6\9a\b3\73\ac\bf\a3\a1\0e\29\66\9b\ea\3f\00\00\00\e0\30\f6\39\3c\00\00\00\00\00\00\e0\bf"
+    "\58\77\24\94\cc\33\c1\bf\41\17\15\6b\80\bc\e8\3f\00\00\00\20\e1\c5\82\bc\00\00\00\00\00\00\e0\bf"
+    "\32\ef\fc\99\79\82\ca\bf\cd\3b\7f\66\9e\a0\e6\3f\00\00\00\20\34\dd\8b\bc\00\00\00\00\00\00\e0\bf"
+    "\fd\a2\ab\53\fe\0d\cd\3f\d6\1d\09\25\f3\4c\e4\3f\00\00\00\20\6a\07\68\3c\00\00\00\00\00\00\f0\bf"
+    "\74\79\c5\5b\67\92\c5\3f\c8\68\ae\39\3b\c7\e1\3f\00\00\00\20\dd\25\8b\3c\00\00\00\00\00\00\f0\bf"
+    "\79\12\fa\73\68\3a\be\3f\3b\f6\06\38\5d\2b\de\3f\00\00\00\20\89\0d\5e\3c\00\00\00\00\00\00\f0\bf"
+    "\cf\95\6b\86\a1\7c\b3\3f\63\a9\ae\a6\e2\7d\d8\3f\00\00\00\e0\ed\2c\67\bc\00\00\00\00\00\00\f0\bf"
+    "\5a\22\9d\93\ea\0b\a6\3f\06\9f\d5\2e\06\94\d2\3f\00\00\00\a0\8d\d2\75\bc\00\00\00\00\00\00\f0\bf"
+    "\fb\69\14\01\06\ad\93\3f\0b\a6\69\3c\b8\f8\c8\3f\00\00\00\c0\19\6d\62\bc\00\00\00\00\00\00\f0\bf"
+    "\31\6d\6d\17\2e\b9\73\3f\2c\b4\29\bc\a6\17\b9\3f\00\00\00\e0\18\27\3e\bc\00\00\00\00\00\00\f0\bf"
+    "\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\f0\bf"
+    "\31\6d\6d\17\2e\b9\73\3f\2c\b4\29\bc\a6\17\b9\bf\00\00\00\e0\18\27\3e\3c\00\00\00\00\00\00\f0\bf"
+    "\fb\69\14\01\06\ad\93\3f\0b\a6\69\3c\b8\f8\c8\bf\00\00\00\c0\19\6d\62\3c\00\00\00\00\00\00\f0\bf"
+    "\5a\22\9d\93\ea\0b\a6\3f\06\9f\d5\2e\06\94\d2\bf\00\00\00\a0\8d\d2\75\3c\00\00\00\00\00\00\f0\bf"
+    "\cf\95\6b\86\a1\7c\b3\3f\63\a9\ae\a6\e2\7d\d8\bf\00\00\00\e0\ed\2c\67\3c\00\00\00\00\00\00\f0\bf"
+    "\79\12\fa\73\68\3a\be\3f\3b\f6\06\38\5d\2b\de\bf\00\00\00\20\89\0d\5e\bc\00\00\00\00\00\00\f0\bf"
+    "\74\79\c5\5b\67\92\c5\3f\c8\68\ae\39\3b\c7\e1\bf\00\00\00\20\dd\25\8b\bc\00\00\00\00\00\00\f0\bf"
+    "\fd\a2\ab\53\fe\0d\cd\3f\d6\1d\09\25\f3\4c\e4\bf\00\00\00\20\6a\07\68\bc\00\00\00\00\00\00\f0\bf"
+    "\32\ef\fc\99\79\82\ca\bf\cd\3b\7f\66\9e\a0\e6\bf\00\00\00\20\34\dd\8b\3c\00\00\00\00\00\00\e0\bf"
+    "\58\77\24\94\cc\33\c1\bf\41\17\15\6b\80\bc\e8\bf\00\00\00\20\e1\c5\82\3c\00\00\00\00\00\00\e0\bf"
+    "\87\8c\e6\9a\b3\73\ac\bf\a3\a1\0e\29\66\9b\ea\bf\00\00\00\e0\30\f6\39\bc\00\00\00\00\00\00\e0\bf"
+    "\4e\9c\90\7f\2c\4a\9d\3f\b1\bd\80\f1\b2\38\ec\bf\00\00\00\80\b1\e0\76\3c\00\00\00\00\00\00\e0\bf"
+    "\75\5a\45\65\75\08\be\3f\46\8d\32\cf\6b\90\ed\bf\00\00\00\20\e6\57\74\bc\00\00\00\00\00\00\e0\bf"
+    "\2d\f8\ac\76\31\a0\a4\bf\da\2d\c6\56\41\9f\ee\bf\00\00\00\e0\b1\60\87\bc\00\00\00\00\00\00\d0\bf"
+    "\d5\67\59\0e\1f\1d\ac\3f\b0\5c\f7\cf\97\62\ef\bf\00\00\00\20\17\62\75\bc\00\00\00\00\00\00\d0\bf"
+    "\50\2f\59\0f\65\a1\9b\3f\26\25\d1\a3\8d\d8\ef\bf\00\00\00\40\f6\7d\88\3c\00\00\00\00\00\00\c0\bf"
+    "\00\00\00\00\00\00\00\00\00\00\00\00\00\00\f0\bf\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00"
+    "\50\2f\59\0f\65\a1\9b\bf\26\25\d1\a3\8d\d8\ef\bf\00\00\00\40\f6\7d\88\3c\00\00\00\00\00\00\c0\3f"
+    "\d5\67\59\0e\1f\1d\ac\bf\b0\5c\f7\cf\97\62\ef\bf\00\00\00\20\17\62\75\bc\00\00\00\00\00\00\d0\3f"
+    "\2d\f8\ac\76\31\a0\a4\3f\da\2d\c6\56\41\9f\ee\bf\00\00\00\e0\b1\60\87\bc\00\00\00\00\00\00\d0\3f"
+    "\75\5a\45\65\75\08\be\bf\46\8d\32\cf\6b\90\ed\bf\00\00\00\20\e6\57\74\bc\00\00\00\00\00\00\e0\3f"
+    "\4e\9c\90\7f\2c\4a\9d\bf\b1\bd\80\f1\b2\38\ec\bf\00\00\00\80\b1\e0\76\3c\00\00\00\00\00\00\e0\3f"
+    "\87\8c\e6\9a\b3\73\ac\3f\a3\a1\0e\29\66\9b\ea\bf\00\00\00\e0\30\f6\39\bc\00\00\00\00\00\00\e0\3f"
+    "\58\77\24\94\cc\33\c1\3f\41\17\15\6b\80\bc\e8\bf\00\00\00\20\e1\c5\82\3c\00\00\00\00\00\00\e0\3f"
+    "\32\ef\fc\99\79\82\ca\3f\cd\3b\7f\66\9e\a0\e6\bf\00\00\00\20\34\dd\8b\3c\00\00\00\00\00\00\e0\3f"
+    "\fd\a2\ab\53\fe\0d\cd\bf\d6\1d\09\25\f3\4c\e4\bf\00\00\00\20\6a\07\68\bc\00\00\00\00\00\00\f0\3f"
+    "\74\79\c5\5b\67\92\c5\bf\c8\68\ae\39\3b\c7\e1\bf\00\00\00\20\dd\25\8b\bc\00\00\00\00\00\00\f0\3f"
+    "\79\12\fa\73\68\3a\be\bf\3b\f6\06\38\5d\2b\de\bf\00\00\00\20\89\0d\5e\bc\00\00\00\00\00\00\f0\3f"
+    "\cf\95\6b\86\a1\7c\b3\bf\63\a9\ae\a6\e2\7d\d8\bf\00\00\00\e0\ed\2c\67\3c\00\00\00\00\00\00\f0\3f"
+    "\5a\22\9d\93\ea\0b\a6\bf\06\9f\d5\2e\06\94\d2\bf\00\00\00\a0\8d\d2\75\3c\00\00\00\00\00\00\f0\3f"
+    "\fb\69\14\01\06\ad\93\bf\0b\a6\69\3c\b8\f8\c8\bf\00\00\00\c0\19\6d\62\3c\00\00\00\00\00\00\f0\3f"
+    "\31\6d\6d\17\2e\b9\73\bf\2c\b4\29\bc\a6\17\b9\bf\00\00\00\e0\18\27\3e\3c\00\00\00\00\00\00\f0\3f")
 )

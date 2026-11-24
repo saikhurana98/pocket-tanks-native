@@ -2,16 +2,18 @@
 
 [Play a two-player match](https://saikhurana98.github.io/pocket-tanks-native/?mode=match) · [Play Target Practice](https://saikhurana98.github.io/pocket-tanks-native/)
 
-Two people can play ten volleys on the same device. Pick weapons in the shop, or use Random to deal the remaining choices. Each player has ten rounds and four moves. The current shop contains ten copies each of Single Shot and Big Shot. The score counts hits on the opponent, deducts self-hits and stops at zero. After the final volley, choose Play Again to draft a fresh arsenal. Target Practice has an unlimited supply of both weapons. Each mode uses a different range captured from the Windows game.
+Two people can play ten volleys on the same device. Pick weapons in the shop, or use Random to deal the remaining choices. Each player has ten rounds and four moves. The current shop contains five rounds each of Single Shot, Big Shot, 3 Shot and 5 Shot. The score counts hits on the opponent, deducts self-hits and stops at zero. After the final volley, choose Play Again to draft a fresh arsenal. Target Practice has an unlimited ammunition for all four weapons. Each mode uses a different range captured from the Windows game.
 
 ## What was ported
 
-The WebAssembly text in [engine/single-shot.wat](engine/single-shot.wat) identifies the corresponding addresses in the 32-bit Windows executable. It uses binary64 arithmetic, an 800 × 450 collision bitmap and the original 4 ms update interval. Sine, cosine and atan2 use the browser's math library. JavaScript handles input, scheduling, audio and Canvas rendering.
+The WebAssembly text in [engine/single-shot.wat](engine/single-shot.wat) identifies the corresponding addresses in the 32-bit Windows executable. It uses binary64 arithmetic, an 800 × 450 collision bitmap and the original 4 ms update interval. The projectile and muzzle routines use the original Windows runtime's sine and cosine polynomials and lookup table. The module imports atan2 from the browser. JavaScript handles input, scheduling, audio and Canvas rendering.
 
 | Original address | Behavior in the port |
 | --- | --- |
 | `0x476410`, `0x4764a0` | Compute the muzzle position for an independently aimed turret on a sloped tank. |
 | `0x4398f0` | Convert the requested shot angle and power into initial velocity. |
+| `0x4c6c65`, `0x4c6e35` | Compute sine and cosine for launch using the original 64-row table and binary64 operation order. |
+| `0x447a90`, `0x447d10` | Track columns above craters and move unsupported terrain at the original 30 Hz cadence, including while other blasts are active. |
 | `0x4343d0` | Update velocity and position in the original operation order. |
 | `0x43512f`–`0x435508` | Sample ordinary terrain and backtrack through the last update to resolve contact. |
 | `0x435add`–`0x435b6a` | Compute the angle and power passed to the explosion trigger. |
@@ -28,7 +30,7 @@ The Windows game exposes F7 for display mode and F8 for LCD fullscreen. On the r
 
 Click either triangle for a one-unit adjustment. Click the Angle or Power heading, move horizontally, and click to commit. The original executable changes one unit per four logical pixels. A touch drag on either control also adjusts it. Escape opens the end-game prompt. The browser toolbar provides fullscreen, stretch, sound and reset.
 
-The visual regression replays the opening of the captured range and the first settled shot. With matching indicator and pointer poses, both complete RGBA frames match the original capture byte for byte. It also checks the color and shape of the blast in 29 original frames and 39 observed terrain positions traversed by a tank. The test hashes come from the original framebuffer and the original process's pose data. Measurements cover one range. The timing of the moving arrow, the trail between captured ticks, moving-tank artwork on other slopes and settling on other terrains have less coverage. The full installation contains 320 distinct weapon names across 14 .wep packs and 16 .weap packs. CPU opponents, the remaining weapon behaviors, procedural terrain, selectable wind and full menu parity are outstanding.
+The visual regression replays the opening of the captured range and the first settled shot. With matching indicator and pointer poses, both complete RGBA frames match the original capture byte for byte. It also checks the color and shape of the blast in 29 original frames and 39 observed terrain positions traversed by a tank. The test hashes come from the original framebuffer and the original process's pose data. The two-player opening field is checked separately with the moving arrow masked, along with 33 original frames of the Big Shot blast. The timing of the moving arrow, the trail between captured ticks, moving-tank artwork on other slopes and settling on other terrains have less coverage. The full installation contains 320 distinct weapon names across 14 .wep packs and 16 .weap packs. CPU opponents, 316 remaining weapons, procedural terrain, selectable wind and full menu parity are outstanding.
 
 ## Reference and replay
 
@@ -38,7 +40,9 @@ The executable SHA-256 is `8e50050faba34a18d47c6f314486ef2888e4552ab18095e3bb517
 
 Run `node tests/shot.mjs` from this directory. The test initializes memory from each shot, launches once, advances the module and compares its state at every tick. It checks 15 shots fired in both directions at five different powers, 4,623 projectile updates, 1,826 explosion updates and six independent muzzle observations. All recorded projectile positions and velocities matched exactly on the test machine. The largest difference in explosion angle or power was 1.42 × 10⁻¹⁴. All compared terrain cells matched.
 
-Run `node tests/match.mjs` for six further shots recorded from the original executable. The capture includes both weapons, ricochet-free hull and turret contact, splash damage, a self-hit that reduced a score from 12 to zero, and a thrown tank. Replay checks 1,637 projectile ticks, 1,696 terrain hashes after blast updates, the hit tick and points, and 129 tank positions during knockback. The scoring routine has REA evidence ID `ev_036e4351178553f9c18d80f6ca5c10886a1dc7cb5dea85b26850ae87140abaf4`. The complete-match browser test covers drafting, consuming both types of ammunition, a 60-point hit, twenty shots, game over and rematch on desktop and touch.
+Run `node tests/match.mjs` for six further shots recorded from the original executable. The capture includes both weapons, ricochet-free hull and turret contact, splash damage, a self-hit that reduced a score from 12 to zero, and a thrown tank. Replay checks 1,637 projectile ticks, 1,696 terrain hashes after blast updates, the hit tick and points, and 129 tank positions during knockback. The scoring routine has REA evidence ID `ev_036e4351178553f9c18d80f6ca5c10886a1dc7cb5dea85b26850ae87140abaf4`. The complete-match browser test covers drafting, consuming five rounds of each of the four weapons, a 60-point hit, twenty shots, game over and rematch on desktop and touch.
+
+Run `node tests/spread.mjs` for four further volleys recorded in Target Practice. The three-projectile and five-projectile weapons share the terrain as shells strike and earlier craters settle. Each weapon was traced twice. The test compares all 5,014 recorded projectile positions and velocities, the tick and coordinates of all 16 impacts, and 2,586 terrain hashes sampled after individual blast updates. The recorded projectile states and hashes match exactly. The browser checks 12 distinct 3 Shot blast phases and 21 distinct 5 Shot blast phases against pixels captured from the original renderer. Full-frame visual comparisons during overlapping blasts and for the moving trails are still outstanding.
 
 ## Run locally
 
