@@ -29,7 +29,7 @@ export function blastSprite(actor,phase){
     const [red,green,blue]=actor.colors[color],points=outline(r);
     for(let i=0;i<points.length;i+=2){
       const at=((actor.radius+points[i+1])*size+actor.radius+points[i])*4;
-      for(let k=at;k<=at+4;k+=4){frame.data[k]=red;frame.data[k+1]=green;frame.data[k+2]=blue;frame.data[k+3]=255}
+      for(let k=at;k<=at+(actor.singlePixel?0:4);k+=4){frame.data[k]=red;frame.data[k+1]=green;frame.data[k+2]=blue;frame.data[k+3]=255}
     }
   }
   ctx.putImageData(frame,0,0);

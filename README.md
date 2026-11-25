@@ -1,6 +1,6 @@
 # Pocket Tanks Deluxe · Native web port
 
-[Play a two-player match](https://saikhurana98.github.io/pocket-tanks-native/?mode=match) · [Play Target Practice](https://saikhurana98.github.io/pocket-tanks-native/)
+[Open the game](https://saikhurana98.github.io/pocket-tanks-native/) · [Play a two-player match](https://saikhurana98.github.io/pocket-tanks-native/?mode=match) · [Play Target Practice](https://saikhurana98.github.io/pocket-tanks-native/?mode=practice)
 
 Two people can play ten volleys on the same device. Pick weapons in the shop, or use Random to deal the remaining choices. Each player has ten rounds and four moves. The shop uses the PC game's deal routine to fill twenty positions from the playable roster. A weapon can appear more than once. The score counts hits on the opponent, deducts self-hits and stops at zero. After the final volley, choose Play Again to draft a fresh arsenal. Target Practice has unlimited ammunition for each playable weapon. Each mode uses a different range captured from the Windows game.
 
@@ -8,16 +8,13 @@ Two people can play ten volleys on the same device. Pick weapons in the shop, or
 
 ## Base Deluxe coverage
 
-The Original and Deluxe packs in this installation contain 30 weapons each. Of those 60, 39 have playable native programs. The other 260 weapons in this installation come from expansion packs.
+The Original and Deluxe packs in this installation contain 30 weapons each. All 60 are playable in Target Practice and the two-player weapon shop. The other 260 weapons in this installation come from expansion packs.
 
-Single Shot, Big Shot, 3 Shot, 5 Shot, Jackhammer, Heatseeker, Tracer, Pile Driver, Dirt Mover, Crazy Ivan, Spider, Sniper Rifle, Ground Hog, Worm, Homing Worm, Skipper, Chain Reaction, Pineapple, Firecracker, Homing Missile, Tommy Gun, Mountain Mover, Scatter Shot, Jump Jets, Laser Battery, Digger, Fission Bomb, Late Bloomer, Color Bomb, Potholes, Popcorn, Sprinkler, Well Digger, Super Tracer, Minigun, Laser, Super Skipper, Crater Maker, Flash Blast.
+Single Shot, Big Shot, 3 Shot, 5 Shot, Jackhammer, Heatseeker, Tracer, Pile Driver, Dirt Mover, Crazy Ivan, Spider, Sniper Rifle, Ground Hog, Worm, Homing Worm, Skipper, Chain Reaction, Pineapple, Firecracker, Homing Missile, Tommy Gun, Mountain Mover, Scatter Shot, Jump Jets, Laser Battery, Digger, Fission Bomb, Late Bloomer, Color Bomb, Potholes, Popcorn, Sprinkler, Well Digger, Super Tracer, Minigun, Laser, Super Skipper, Crater Maker, Flash Blast, Magic Wall, Dirt Slinger, Zapper, Napalm, Hail Storm, Dirtball, Cruiser, Mud Pie, Pin Cushion, Cannon Ball, Wacky Tank, Glue Bomb, Fire Bolt, Boomerang, Bouncy Dirt, Big Dirtball, Super Zapper, Cruball, Mega Cruiser, Roller, Heavy Roller.
 
 Both modes use the same weapon programs. Delays, offsets, linked impact and proximity triggers, underground shells, seeded random spreads, heat seeking, terrain erosion and tracer labels come from the original pack definitions and executable routines. The browser runs the simulation and draws the scene locally.
 
-| Base pack | Weapons still to port |
-| --- | --- |
-| Original | Magic Wall, Dirt Slinger, Zapper, Napalm, Hail Storm, Dirtball, Cruiser |
-| Deluxe | Mud Pie, Pin Cushion, Cannon Ball, Wacky Tank, Glue Bomb, Fire Bolt, Boomerang, Bouncy Dirt, Big Dirtball, Super Zapper, Cruball, Mega Cruiser, Roller, Heavy Roller |
+The launcher leads through the title and mode menu. Two-player setup records each tank’s name and color before drafting. Options can save named weapon selections in this browser. At the end of a match, the seven letters of Winner! move above the winning tank. Fireworks and their four explosion samples continue through the replay prompt, which opens after three simulation seconds.
 
 ## What was ported
 
@@ -45,7 +42,7 @@ The Windows game exposes F7 for display mode and F8 for LCD fullscreen. On the r
 
 Click either triangle for a one-unit adjustment. Click the Angle or Power heading, move horizontally, and click to commit. The original executable changes one unit per four logical pixels. A touch drag on either control also adjusts it. Escape opens the end-game prompt. The browser toolbar provides fullscreen, stretch, sound and reset.
 
-The visual regression replays the opening of the captured range and the first settled shot. With matching indicator and pointer poses, both complete RGBA frames match the original capture byte for byte. It also checks the color and shape of the blast in 29 original frames and 39 observed terrain positions traversed by a tank. The test hashes come from the original framebuffer and the original process's pose data. The two-player opening field is checked separately with the moving arrow masked, along with 33 original frames of the Big Shot blast. The timing of the moving arrow, the trail between captured ticks, moving-tank artwork on other slopes and settling on other terrains have less coverage. Base Deluxe still needs 21 weapons, CPU play, procedural terrain, wind settings, and the original setup and options menus. Remaining weapon systems include dirt building, ground-travelling weapons, Superball actors, fire and electrical arcs. Some particle emitters, animation placement and tank movement on changing slopes also need original-frame comparisons.
+The visual regression replays the opening of the captured range and the first settled shot. With matching indicator and pointer poses, both complete RGBA frames match the original capture byte for byte. It also checks the color and shape of the blast in 29 original frames and 39 observed terrain positions traversed by a tank. The test hashes come from the original framebuffer and the original process's pose data. The two-player opening field is checked separately with the moving arrow masked, along with 33 original frames of the Big Shot blast. The timing of the moving arrow, the trail between captured ticks, moving-tank artwork on other slopes and settling on other terrains have less coverage. CPU and LAN play, configurable terrain and wind, and frame-level comparisons of every menu animation and weapon effect remain open. Both playable modes use captured terrain. Custom tank colors use the original sprite shading with a browser-side tint.
 
 ## Reference and replay
 
@@ -61,11 +58,15 @@ Run `node tests/spread.mjs` for four further volleys recorded in Target Practice
 
 Run `node tests/deluxe.mjs` for 101 additional volleys and the shop replay. The shots compare 257,401 projectile updates and 100,183 per-explosion terrain samples with the original. Each sample hashes every occupied or empty pixel in the clipped blast window. Sniper Rifle, Laser, Popcorn and Color Bomb use the PC shrapnel damage and lifetime routine. Four controlled direct hits check 100-point Sniper Rifle hits and 70-point Laser hits in both directions. The particle tests compare 1,386 positions, velocities and colors at emission, the first live particle and its fade timer during each recorded update, and 2,055 individual framebuffer color blends. The ten Skipper and Super Skipper captures cover ordinary terrain, the bottom edge and special surface materials. Four of those captures used deliberately placed surface flags in the reference game. Twelve Dirt Mover, Digger and Well Digger captures compare 3,480 terrain cuts with pixel occupancy hashes and the line coordinates and colors from 67 PC rendering updates. The three settled playfield hashes match across all 360,000 cells. Four Crazy Ivan volleys exercise projectiles that seek a moving tank. Two also compare 3,948 tank poses during flight, knockback, landing and downhill sliding. Four Jump Jets launches compare 598 launch, flight, landing and settling poses. Separate checks compare tracer locations and two original blast color sequences. The test suite also reproduces all twenty screen positions and weapon IDs in a captured 320-weapon PC shop deal.
 
-Run `node tests/contour.mjs` for the ground paths of Cruiser, Boomerang, Mega Cruiser, Roller, Heavy Roller and Cruball. Starting with each captured impact position and heading, the contour routine reproduces 1,006 moves and 2,533 tick positions on the six recorded surfaces. These weapons still need their complete launch, stopping, impact and presentation routines before they enter the shop.
+Run `node tests/contour.mjs` for the ground paths of Cruiser, Boomerang, Mega Cruiser, Roller, Heavy Roller and Cruball. Starting with each captured impact position and heading, the contour routine reproduces 1,006 moves and 2,533 tick positions on the six recorded surfaces. These six weapons also run in the shop and in Target Practice.
 
 To regenerate the playable programs and their sound files from an installed copy, run `node tools/import-base.mjs "PATH_TO_POCKET_TANKS_DELUXE"`. The importer reads the two original base packs and the art palette. To rebuild the Deluxe test fixture from raw original captures, run `node tests/captures/pack-programs.mjs OUTPUT.json.gz TRACE.json [...]`. Raw shots include the terrain, tank poses, active player and initial random state when recorded.
 
 ## Run locally
+
+Run `node tests/deluxe-actors.mjs` for 27 more PC shots and 19 secondary-actor traces. The suite compares 7,477 projectile updates, 2,533 ground positions, 10,996 actor positions, two electrical beam endpoints and 19 whole-field occupancy hashes. An older Roller capture places the blast one pixel lower than the native port. Repeating that shot in the original with the saved terrain mask matches the port. The older capture lacks surface-material flags. The suite reports that discrepancy separately. It also fires each weapon at five angle and power combinations and checks seven positions from the original victory lettering.
+
+The browser tests in `tests/navigation.cjs` and `tests/arsenal-browser.cjs` accept the game URL. They exercise the menus, weapon presets, shop and exit routes, render all 60 weapon programs, and decode the referenced sounds. Individual effects still need further frame and sound comparisons.
 
 Serve this directory over HTTP, for example with `python -m http.server 8080`, and visit `http://localhost:8080`. The compiled module is included. To rebuild with WABT 1.0.39, run `wat2wasm engine/single-shot.wat -o engine/single-shot.wasm`.
 

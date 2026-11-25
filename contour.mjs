@@ -9,7 +9,7 @@ export function walkContour(s,x,y,heading,hand,steps){
     let next=2;
     for(const turn of [hand,0,-hand,2]){
       const id=(heading+turn+4)%4,[dx,dy]=directions[id];
-      if(solid(s,x+dx,y+dy)){next=id;break}
+      if((heading===2&&y>449&&turn===hand)||solid(s,x+dx,y+dy)){next=id;break}
     }
     heading=next;x+=directions[next][0];y+=directions[next][1];
   }
@@ -48,7 +48,7 @@ export function rebound(s,b,bottom,rubber){
   const impulse=rubber?speed*.5:(b.actor.bounceImpulse||Math.max(.8,speed));
   b.vx=e.vx.value=e.surfaceCos(angle)*impulse;
   b.vy=e.vy.value=e.surfaceSin(angle)*impulse;
-  if(rubber){b.rubberHits=(b.rubberHits??0)+1}
+  if(rubber){b.rubberHits=(b.rubberHits??0)+1;s.onSound?.("rubberbullet.wav")}
   else{b.bounces--;if(b.actor.bounceSound)s.onSound?.(b.actor.bounceSound)}
   return (rubber&&(impulse<.5||b.rubberHits>20))||(!bottom&&Boolean(solid(s,Math.trunc(b.x),Math.trunc(b.y))));
 }

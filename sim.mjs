@@ -1,3 +1,5 @@
+import {beginActor,advanceActor} from "./deluxe-actors.mjs";
+import {advanceVictory} from "./victory.mjs";
 import {weapons,volleys,roll,prepareColliders,hitsTank,applyBlast,throwTank,advanceHitNumbers} from "./match.mjs";
 import {outsideContact,rebound} from "./contour.mjs";
 import {queueDirt,advanceDirt} from "./soil.mjs";
@@ -26,7 +28,7 @@ export function setup(engine,scene,mode="practice") {
     mode,scores:[0,0],ammo:scene.tanks.map(()=>weapons.map(()=>2)),moves:mode==="match"?[4,4]:[99,99],
     dirtFalling:false,rockTime:.774,rockIndex:5,
     hitNumbers:[],nextHitPhase:0,hitPhaseTime:0,
-    fragments:[],fx:{seed:scene.fxSeed??seed,particles:[],emitters:[],ticks:0,clock:0,previous:DT},
+    special:[],burn:[0,0],fragments:[],fx:{seed:scene.fxSeed??seed,particles:[],emitters:[],ticks:0,clock:0,previous:DT},
     selected:[0,0],weapon:0,finished:false,airborne:[null,null],cutters:[],craters:[],dirt:new Map(),dirtAge:0,inVolley:false};
 }
 export function floorAt(s,x,startY=0) {
@@ -93,6 +95,7 @@ function releaseDue(s){
     if(actor.type==="bullet"){
       e.launch(x,y,angle,power);
       const ball={actor,bounces:actor.bounces??0,frame:0,frameTime:0,age:0,fresh:true,x,y,vx:e.vx.value,vy:e.vy.value,trail:[]};
+      if(actor.flightEmitter)ball.emitter=startEmitter(s.fx,{...actor.flightEmitter,seconds:Infinity},x,y);
       s.balls.push(ball);
     }else if(actor.type==="marker"){
       const marker={x,y,actor,age:0};s.markers.push(marker);s.onMarker?.(marker);
@@ -104,6 +107,8 @@ function releaseDue(s){
       // 0x45a760. Jump Jets offsets the tank three pixels along the barrel before takeoff.
       throwTank(s,s.turn,angle,power*.11+1.1,3);
       s.groundAge[s.turn]=DT;s.jumpSettling=true;
+    }else if(actor.type!=="blast"){
+      s.special.push(beginActor(s,actor,x,y,angle,power));
     }else{
       s.blasts.push({actor,x,y,phase:0,age:0,struck:[false,false]});
       if(actor.erase)addCrater(s,x,actor.radius);
@@ -190,6 +195,7 @@ function settleTank(s,pose,id){
 }
 export function step(s) {
   if(s.pool)return;
+  if(s.finished)advanceVictory(s,DT);
   stepActors(s);
   advanceHitNumbers(s,DT);
 }
@@ -218,8 +224,9 @@ function stepActors(s) {
     ball.age+=DT;
     if(e.dropping.value&&!ball.dropped){s.onSound?.(ball.actor.dropSound);ball.dropped=true}
     ball.x=e.x.value;ball.y=e.y.value;ball.vx=e.vx.value;ball.vy=e.vy.value;
+    if(ball.emitter){ball.emitter.x=ball.x;ball.emitter.y=ball.y}
     if(e.approach.value)queueTrigger(s,ball.actor.onApproach,e.approachX.value,e.approachY.value,e.approachAngle.value,e.approachPower.value);
-    if(event===2)return false;
+    if(event===2){if(ball.emitter)ball.emitter.stopped=true;return false}
     if(event===1){
       const bottom=Boolean(e.bottomContact.value);
       const key=Math.trunc(ball.y)*W+Math.trunc(ball.x);
@@ -235,10 +242,11 @@ function stepActors(s) {
     }
     const timer=ball.actor.onTimer&&ball.age>=ball.actor.time;
     if(timer||event===1||hitsTank(s,ball.x,ball.y)){
+      if(ball.emitter)ball.emitter.stopped=true;
       queueTrigger(s,timer?ball.actor.onTimer:ball.actor.onImpact,ball.x,ball.y,e.impactAngle(),e.impactPower());
       return false;
     }
-    if(e.approach.value)return false;
+    if(e.approach.value){if(ball.emitter)ball.emitter.stopped=true;return false}
     if(ball.actor.animation){
       const {speed,frames}=ball.actor.animation;
       ball.frameTime+=DT;
@@ -271,6 +279,7 @@ function stepActors(s) {
     hit.age+=DT;
     return hit.age<hit.actor.seconds;
   });
+  s.special=s.special.filter(a=>advanceActor(s,a,DT,(...args)=>queueTrigger(s,...args)));
   s.cutters=s.cutters.filter(cut=>advanceCutter(s,cut,DT));
   releaseDue(s);
   if(s.fx.emitters.length)emitParticles(s,DT);
@@ -285,5 +294,5 @@ function stepActors(s) {
     if(s.jumpSettling&&id===s.turn&&groundedTick&&!changed)s.jumpSettling=false;
   });
   if(moved)s.colliders=prepareColliders(s);
-  if(!s.ball&&!s.impact&&!s.pending.length&&!s.fragments.length&&!s.markers.length&&!s.cutters.length&&!s.dirt.size&&!s.airborne.some(Boolean)&&!s.jumpSettling)endTurn(s);
+  if(!s.ball&&!s.impact&&!s.pending.length&&!s.special.length&&!s.fragments.length&&!s.markers.length&&!s.cutters.length&&!s.dirt.size&&!s.airborne.some(Boolean)&&!s.jumpSettling)endTurn(s);
 }

@@ -1,10 +1,11 @@
+import {drawWinner} from "./victory.mjs";
 import {blastSprite} from "./blast-art.mjs";
 import {paintParticles} from "./particles.mjs";
 import {cutterStripes,rasterLine} from "./cutter.mjs";
 import sprites from "./art/animated-shells.json" with {type:"json"};
 import widths from "./art/arsenal.json" with {type:"json"};
 import {weapons,volleys,hitNumberLeft} from "./match.mjs";
-const pngs=["hit-numbers","tracer-labels","animated-shells","match","big-blast","shop","random","match-range","arsenal","three-blast","five-blast"];
+const pngs=["treb20","hit-numbers","tracer-labels","animated-shells","match","big-blast","shop","random","match-range","arsenal","three-blast","five-blast"];
 const sources = ["range","sky","aim","arrows","angle","power","bar","controls","blast","hulls","barrels","end","weapon","second",...pngs];
 export async function loadArt() {
   const images = await Promise.all(sources.map(async name => {
@@ -25,6 +26,7 @@ export class RangeDisplay {
     this.buttons=art.buttons;
     this.cursors=art.cursors;
     this.blastFrames=new Map();
+    this.colorTiles=new Map();
     this.cutterFrames=new WeakMap();
     const mask=document.createElement("canvas");
     mask.width=40;mask.height=153;
@@ -52,6 +54,14 @@ export class RangeDisplay {
     }
   }
   bind(state){
+    state.onTint=(x,y,color,alpha)=>{
+      const i=(y*800+x)*4,old=this.pixels.data;
+      state.onDeposit(x,y,color.map((v,j)=>old[i+j]+(((v-old[i+j])*alpha)>>8)));
+    };
+    state.onDeposit=(x,y,color)=>{
+      const i=y*800+x;this.painted[i]=state.solid[i];this.pixels.data.set([...color,255],i*4);
+      const b=this.dirty??=[800,450,-1,-1];b[0]=Math.min(b[0],x);b[1]=Math.min(b[1],y);b[2]=Math.max(b[2],x);b[3]=Math.max(b[3],y);
+    };
     state.onBlastStep=(b,eroded)=>{if(eroded)this.updateGround(state,b.x,b.actor.radius)};
     state.onDirtStep=changes=>this.dropSoil(state,changes);
     state.onCut=([x,y,a,b])=>this.clearGround(state,Math.max(0,Math.min(x,a)),Math.max(0,Math.min(y,b)),
@@ -109,7 +119,31 @@ export class RangeDisplay {
     this.ctx.drawImage(sprite.canvas,sprite.left,sprite.top);
   }
   tile(name,n,cols,w,h,x,y,sourceWidth=w) {
-    this.ctx.drawImage(this.art[name],n%cols*sourceWidth,Math.floor(n/cols)*h,w,h,x,y,w,h);
+    const sx=n%cols*sourceWidth,sy=Math.floor(n/cols)*h;
+    if(["arrows","hulls","aim"].includes(name)){
+      const id=Number(n>=(name==="aim"?368:72));
+      if(this.players&&this.players[id].color!==id){
+        this.coloredTile(name,sx,sy,w,h,x,y,id);return;
+      }
+    }
+    this.ctx.drawImage(this.art[name],sx,sy,w,h,x,y,w,h);
+  }
+  coloredTile(name,sx,sy,w,h,x,y,id){
+    const ink=this.players[id].ink,key=[name,sx,sy,ink].join("/");
+    let sprite=this.colorTiles.get(key);
+    if(!sprite){
+      sprite=document.createElement("canvas");sprite.width=w;sprite.height=h;
+      const c=sprite.getContext("2d");c.drawImage(this.art[name],sx,sy,w,h,0,0,w,h);
+      const pixels=c.getImageData(0,0,w,h),d=pixels.data;
+      const rgb=ink.slice(1).match(/../g).map(hex=>parseInt(hex,16)/255);
+      for(let k=0;k<d.length;k+=4){
+        const r=d[k],g=d[k+1],b=d[k+2];
+        if(r<=g||g<b||r-b<5)continue;
+        for(let j=0;j<3;j++)d[k+j]=b+(r-b)*rgb[j];
+      }
+      c.putImageData(pixels,0,0);this.colorTiles.set(key,sprite);
+    }
+    this.ctx.drawImage(sprite,x,y);
   }
   tracer(label,cx,cy){
     const x=Math.trunc(cx)-20,y=Math.trunc(cy)-8;
@@ -142,6 +176,7 @@ export class RangeDisplay {
     if(x===ox&&y===oy&&slope===os){
       if(!this.match){this.tile("aim",angle+id*23*16,16,52,40,x-26,y-31);return}
       if(angle===(360-this.scene.tanks[id][3])%360){
+        if(this.players&&this.players[id].color!==id){this.coloredTile("match-range",id*52,450,52,40,x-26,y-31,id);return}
         this.ctx.drawImage(this.art["match-range"],id*52,450,52,40,x-26,y-31,52,40);return;
       }
     }
@@ -195,6 +230,12 @@ export class RangeDisplay {
   }
   shop(s,ui){
     const c=this.ctx;c.drawImage(this.art.shop,0,0);
+    this.players?.forEach((p,i)=>{
+      if(!p.custom)return;
+      const x=i?702:97;c.fillStyle="#000";c.fillRect(x-88,79,176,27);
+      c.save();c.fillStyle=p.ink;c.font="bold 20px Trebuchet MS, sans-serif";c.textAlign="center";
+      c.fillText(p.name.toUpperCase(),x,100,174);c.restore();
+    });
     const item=(w,x,y)=>{
       c.drawImage(this.art.arsenal,1,w*24,22,22,x,y,22,22);
       c.drawImage(this.art.arsenal,140,w*24,widths[w],23,x+25,y,widths[w],23);
@@ -216,6 +257,7 @@ export class RangeDisplay {
     const c=this.ctx;
     if(s.pool||ui.finalShop){this.shop(s,ui);return}
     c.drawImage(this.art.range,0,450,800,150,0,450,800,150);
+    if(this.dirty){const [x,y,r,b]=this.dirty;this.g.putImageData(this.pixels,0,0,x,y,r-x+1,b-y+1);this.dirty=null}
     c.drawImage(this.ground,0,0);
     if(s.turn===1){c.drawImage(this.art.second,0,1,800,150,0,450,800,150);c.drawImage(this.art.second,0,0,800,1,0,31,800,1)}
     c.save();c.beginPath();c.rect(0,0,800,450);c.clip();
@@ -227,16 +269,20 @@ export class RangeDisplay {
       this.tile("arrows",phase+id*72,12,26,60,x-13,y-(id?65:60));
     }
     for(const cut of s.cutters)this.cutter(cut);
-    for(const ball of s.balls){
-      this.projectile(ball.actor,ball);
+    for(const ball of [...s.balls,...s.special]){
+      if(ball.actor.type==="zapper"){
+        c.save();c.globalAlpha=ball.alpha/255;
+        c.strokeStyle="rgb("+ball.actor.color.join(",")+")";c.beginPath();c.moveTo(ball.x,ball.y);c.lineTo(...ball.end);c.stroke();c.restore();
+      }
+      if(ball.trail&&ball.actor.trail)this.projectile(ball.actor,ball);
       const animation=ball.actor.animation;
       if(animation){
         const [sx,sy,w,h]=sprites[animation.frames[ball.frame]];
         c.save();c.translate(Math.trunc(ball.x),Math.trunc(ball.y));
         if(animation.rotate)c.rotate(Math.atan2(ball.vy,ball.vx)+Math.PI/2);
         c.imageSmoothingEnabled=false;
-        c.drawImage(this.art["animated-shells"],sx,sy,w,h,animation.rotate?-Math.trunc(w/2):-animation.offsetX,
-          animation.rotate?-Math.trunc(h/2):-animation.offsetY,w,h);
+        c.drawImage(this.art["animated-shells"],sx,sy,w,h,(animation.rotate||ball.actor.blend)?-Math.trunc(w/2):-animation.offsetX,
+          (animation.rotate||ball.actor.blend)?-Math.trunc(h/2):-animation.offsetY,w,h);
         c.restore();
       }
     }
@@ -258,6 +304,7 @@ export class RangeDisplay {
       this.tracer(m.actor.label,m.x,m.y);
     }
     for(const label of s.hitNumbers)this.hitNumber(label);
+    if(s.finished)drawWinner(c,this.art.treb20,s);
     c.restore();
     const hot=busy?null:ui.pressed||ui.hover,btn=this.buttons[hot];
     if(btn){const [sx,sy]=btn.states[ui.pressed?1:0];c.drawImage(this.art.controls,sx,sy,btn.w,btn.h,btn.x,btn.y,btn.w,btn.h)}
@@ -279,13 +326,19 @@ export class RangeDisplay {
     if(selected>0)c.drawImage(this.art.arsenal,0,24*selected,134,23,244,555,134,23);
     if(s.scores[0])this.score(s.scores[0],false);
     if(s.scores[1])this.score(s.scores[1],true);
+    this.players?.forEach((p,i)=>{
+      if(!p.custom)return;
+      c.fillStyle="#000";c.fillRect(i?482:0,0,318,31);
+      this.menuFont(p.name,i?795:4,3,{right:!!i,scale:.67,color:p.ink,maxWidth:310});
+    });
     if(s.mode==="match"){
       const volley=s.finished?volleys:Math.min(volleys-1,Math.floor((s.shots-(s.inVolley?1:0))/2));
       c.drawImage(this.art.match,0,26+volley*20,120,20,340,0,120,20);
       this.tile("power",s.moves[s.turn],16,42,20,264,495,43);
       if(s.finished){
         c.fillStyle="#000";c.fillRect(245,556,132,21);
-        c.drawImage(this.art.match,0,250,332,74,234,198,332,74);
+        if(s.victory?.age>=3)c.drawImage(this.art.match,0,250,332,74,234,198,332,74);
+        else if(s.victory?.winner===-1)this.menuFont?.("It's a tie!",400,210,{center:true});
       }
     }
     if(ui.mode==="weapon"){

@@ -24,7 +24,7 @@ export function deal(state,catalog){
   return pool;
 }
 export function openShop(state){
-  state.pool=deal(state,catalog);
+  state.pool=deal(state,state.catalog??catalog);
   state.autoDraft=false;
   state.draftTime=0;
   state.draft=[[],[]];
@@ -129,6 +129,11 @@ export function applyBlast(state,hit,front=Math.min(hit.phase,hit.actor.radius-1
     state.hitNumbers.push({x:pose[0],y:pose[1]-15,phase:state.nextHitPhase%359,
       text:String(id===state.turn?-points:points)});
     state.nextHitPhase+=60;
+      if(weapon.randomize){
+        pose[3]=roll(state,359);
+        pose[4]=1+roll(state,99);
+        state.onAimChange?.(id,pose[3],pose[4]);
+      }
     if(!weapon.knockback)return;
     // 0x44c637..0x44c715, normal throw with default intensity and no angle override.
     const dx=Math.trunc(pose[0])-Math.trunc(hit.x),dy=Math.trunc(pose[1])-Math.trunc(hit.y);

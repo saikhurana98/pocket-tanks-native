@@ -1,3 +1,4 @@
+import {Navigation,loadMenus,ink} from "./navigation.mjs";
 import {DT,loadEngine,setup,launch,moveTank,step} from "./sim.mjs";
 import {RangeDisplay,loadArt} from "./presentation.mjs";
 import {weapons,inventory,openShop,pickWeapon,advanceDraft,volleys} from "./match.mjs";
@@ -14,6 +15,11 @@ const labels={angleleft:"Increase angle",angleright:"Decrease angle",powerleft:"
 const ui={hover:null,pressed:null,mode:null,dialog:false,ended:false,turnTime:0};
 let engine,scene,matchScene,display,s,clock,lag=0,hold,gesture,adjust,lastPoint,sound=true,context;
 const music=new Audio();music.preload="none";music.loop=true;music.volume=.4;
+let navigation,track=null,musicEnabled=true,fxEnabled=true,unlocked=false;
+function musicScene(name){
+  if(track!==name){music.pause();track=name;if(name)music.src="./audio/"+name+".mp3";else music.removeAttribute("src")}
+  if(name&&unlocked&&sound&&musicEnabled&&!document.hidden)music.play().catch(()=>{});
+}
 const sounds=new Map(),mediaVoices=new Map();
 function loadSound(file){
   if(!sounds.has(file)){
@@ -26,7 +32,7 @@ function loadSound(file){
 }
 function unlockAudio(){
   if(!sound)return;
-  if(!music.getAttribute("src"))music.src="./audio/ingame.mp3";
+  unlocked=true;
   if(window.AudioContext){
     context??=new AudioContext();
     loadSound("cannon.wav");
@@ -34,13 +40,13 @@ function unlockAudio(){
     if(s?.pool)loadSound("pickweap.wav");
     context.resume().catch(()=>{});
   }
-  music.play().catch(()=>{});
+  musicScene(track);
 }
 async function effect(which){
-  if(!sound)return;
+  if(!sound||!fxEnabled)return;
   if(context?.state==="running"){
     const buffer=await loadSound(which);
-    if(!sound)return;
+    if(!sound||!fxEnabled)return;
     if(buffer&&context.state==="running"){
       const src=context.createBufferSource();src.buffer=buffer;src.connect(context.destination);src.start();
       return;
@@ -80,7 +86,7 @@ function sync(){
       if(slot>=0&&!button.hidden)button.setAttribute("aria-label","Draft "+weapons[s.pool[slot]].name);
     }
     else if(s.pool||ui.ended)button.hidden=true;
-    else if(ui.dialog||s.finished)button.hidden=id!=="yes"&&id!=="no";
+    else if(ui.dialog||s.finished)button.hidden=(s.finished&&(s.victory?.age??0)<3)||(id!=="yes"&&id!=="no");
     else if(ui.mode==="weapon"){
       const row=ui.weaponItems.indexOf(stock)-ui.weaponTop;
       const arrow=id==="weaponup"||id==="weapondown";
@@ -101,12 +107,20 @@ function sync(){
   main.classList.toggle("tools",ui.dialog||ui.ended);
 }
 function reset(mode=s?.mode||"practice"){
+  navigation?.hide();$("targets").hidden=false;
   stopHold();finishAdjust();gesture=null;lag=0;clock=undefined;
   const range=mode==="match"?matchScene:scene;
   s=setup(engine,range,mode);
   s.onSound=effect;
+  s.onAimChange=(id,direction,power)=>{ui.angles[id]=wrap(360-direction);ui.powers[id]=power};
   display.bind(s);
+  if(navigation){
+    s.catalog=navigation.available.filter(i=>!navigation.removed.includes(i));
+    display.players=navigation.players.map((p,i)=>({...p,ink:ink[p.color],custom:p.color!==i||p.name!=="Player "+(i+1)}));
+    display.menuFont=navigation.font.bind(navigation);
+  }
   if(mode==="match")openShop(s);
+  musicScene(mode==="match"?"pocket":"ingame");
   Object.assign(ui,{angles:s.tanks.map(p=>wrap(360-p[3])),powers:s.tanks.map(p=>p[4]),turnTime:performance.now(),
     hover:null,pressed:null,mode:null,dialog:false,ended:false,finalShop:null});
   $("loading").hidden=true;$("loading").setAttribute("role","status");$("loading").removeAttribute("tabindex");
@@ -163,15 +177,16 @@ function action(id,p){
     sync();return;
   }
   if(s.finished){
+    if((s.victory?.age??0)<3)return;
+    if(id==="yes"||id==="no")effect("crick.wav");
     if(id==="yes")reset("match");
-    if(id==="no")reset("practice");
+    if(id==="no")navigation.show("title");
     return;
   }
   if(id==="exit"||id==="no"){effect("crick.wav");ui.dialog=id==="exit";finishAdjust();ui.pressed=null;stopHold();sync();return}
   if(id==="yes"){
     effect("crick.wav");
-    ui.dialog=false;ui.ended=true;music.pause();$("loading").textContent=s.mode==="match"?"Start two-player match":"Start Target Practice";
-    $("loading").hidden=false;$("loading").setAttribute("role","button");$("loading").tabIndex=0;$("loading").focus();sync();return;
+    ui.dialog=false;ui.ended=true;finishAdjust();stopHold();sync();navigation.show("title");return;
   }
   if(busy()||ui.dialog)return;
   const turn=s.turn;
@@ -202,7 +217,7 @@ function action(id,p){
   sync();
 }
 board.addEventListener("pointerdown",e=>{
-  if(!s||e.button!==0||gesture)return;
+  if(navigation?.page||!s||e.button!==0||gesture)return;
   if(ui.ended){reset();return}
   unlockAudio();const p=boardPoint(e);lastPoint=p;ui.pointer=e.pointerType==="mouse"?p:null;let id=hit(p);
   if(adjust){if(document.pointerLockElement!==board)slide(p);finishAdjust();effect("crick.wav");gesture={pointer:e.pointerId,commit:true};sync();return}
@@ -215,7 +230,7 @@ board.addEventListener("pointerdown",e=>{
   sync();
 });
 board.addEventListener("pointermove",e=>{
-  if(!s||ui.ended||gesture&&e.pointerId!==gesture.pointer)return;
+  if(navigation?.page||!s||ui.ended||gesture&&e.pointerId!==gesture.pointer)return;
   const p=boardPoint(e);lastPoint=p;
   ui.pointer=e.pointerType==="mouse"?p:null;
   if(gesture?.p&&!adjust&&!gesture.done&&["angle","power"].includes(gesture.id)&&e.pointerType==="touch"&&Math.abs(p.x-gesture.p.x)>2){
@@ -268,6 +283,17 @@ function stretch(value){
 }
 try{stretch(localStorage.getItem("pt-stretched")==="true")}catch{}
 $("size").onclick=()=>stretch(!main.classList.contains("stretched"));
+function toggleOption(id){
+  if(id==="fx")fxEnabled=!fxEnabled;
+  else if(id==="music"){musicEnabled=!musicEnabled;if(musicEnabled)musicScene(track);else music.pause()}
+  else $(id).click();
+}
+function optionLabel(id){
+  if(id==="fx")return fxEnabled?"On":"Off";
+  if(id==="music")return musicEnabled?"On":"Off";
+  if(id==="size")return main.classList.contains("stretched")?"Stretched":"Normal";
+  return document.fullscreenElement||main.classList.contains("expanded")?"Fullscreen":"Windowed";
+}
 function fullLabel(){$("full").textContent=document.fullscreenElement||main.classList.contains("expanded")?"Exit fullscreen":"Fullscreen"}
 $("full").onclick=async()=>{
   if(document.fullscreenElement)await document.exitFullscreen();
@@ -282,6 +308,8 @@ document.addEventListener("pointerlockchange",()=>{
 });
 document.addEventListener("keydown",e=>{
   if(e.key==="F7"||e.key==="F8"){e.preventDefault();if(!e.repeat)$(e.key==="F7"?"full":"size").click();return}
+  if(e.key==="F5"||e.key==="F6"){e.preventDefault();if(!e.repeat)toggleOption(e.key==="F5"?"fx":"music");return}
+  if(navigation?.page){if(e.key==="Escape"){e.preventDefault();navigation.back()}return}
   if(!s)return;
   if(ui.ended&&(e.key==="Enter"||e.key===" ")){e.preventDefault();reset();unlockAudio();return}
   if(ui.mode==="weapon"&&(e.key==="ArrowUp"||e.key==="ArrowDown")){
@@ -294,7 +322,8 @@ document.addEventListener("keydown",e=>{
 });
 function frame(t){
   const dt=clock===undefined?0:Math.min(.1,(t-clock)/1000);clock=t;
-  if(ui.finalShop==="shown"){ui.finalShop=null;ui.turnTime=t;sync()}
+  if(navigation?.page){navigation.draw(dt);requestAnimationFrame(frame);return}
+  if(ui.finalShop==="shown"){musicScene("ingame");ui.finalShop=null;ui.turnTime=t;sync()}
   if(!ui.dialog&&!ui.ended){
     lag+=dt;while(lag>=DT){
       const ball=s.ball,active=s.inVolley,moving=s.move,turn=s.turn,score=s.scores[s.turn];
@@ -303,14 +332,15 @@ function frame(t){
       if(turn!==s.turn||moving&&!s.move||active!==s.inVolley||ball&&!s.ball||score!==s.scores[turn]){ui.turnTime=t;sync()}
       lag-=DT;
     }
+    if(s.finished&&s.victory?.age>=3&&$("yes").hidden)sync();
     display.draw(s,ui,t);
     if(ui.finalShop==="pending")ui.finalShop="shown";
   }else if(ui.dialog)display.draw(s,ui,t);
   requestAnimationFrame(frame);
 }
-document.addEventListener("visibilitychange",()=>{clock=undefined;lag=0;stopHold();if(document.hidden)music.pause();else if(sound&&context)music.play().catch(()=>{})});
+document.addEventListener("visibilitychange",()=>{clock=undefined;lag=0;stopHold();if(document.hidden)music.pause();else musicScene(track)});
 try{
-  const [module,practice,match,art]=await Promise.all([loadEngine(),fetch("./range.json").then(r=>r.json()),fetch("./match-range.json").then(r=>r.json()),loadArt()]);
+  const [module,practice,match,art,menus]=await Promise.all([loadEngine(),fetch("./range.json").then(r=>r.json()),fetch("./match-range.json").then(r=>r.json()),loadArt(),loadMenus()]);
   engine=module;scene=practice;matchScene=match;display=new RangeDisplay(board.querySelector("canvas"),art,scene);
   // Create overlapping arrow buttons last so keyboard and pointer users can reach them.
   for(const id of ["move","angle","power","weapon","fire","moveleft","moveright","angleleft","angleright","powerleft","powerright","weaponup","weapondown"]){
@@ -323,5 +353,8 @@ try{
     const id="pick-"+i;labels[id]="Draft weapon";
     target(id,262+158*Math.floor(i/10),124+i%10*27,134,24);
   }
-  reset(new URLSearchParams(location.search).get("mode")==="match"?"match":"practice");requestAnimationFrame(frame);
+  navigation=new Navigation($("menu"),display,menus,{start:reset,track:musicScene,effect,unlock:unlockAudio,toggle:toggleOption,optionLabel});
+  const mode=new URLSearchParams(location.search).get("mode");reset(mode==="match"?"match":"practice");
+  if(mode!=="practice"&&mode!=="match")navigation.show("launch");
+  requestAnimationFrame(frame);
 }catch(e){$("loading").textContent="Could not load Target Practice. Reload to try again.";console.error(e)}

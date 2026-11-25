@@ -6,7 +6,9 @@ function random1000(fx){
 }
 
 export function startEmitter(fx,definition,x,y){
-  fx.emitters.push({definition,x,y,age:0,clocks:definition.nodes.map(()=>0)});
+  const source={definition,x,y,age:0,clocks:definition.nodes.map(()=>0)};
+  fx.emitters.push(source);
+  return source;
 }
 
 // The stationary radial nodes in these base packs have no rotating pivot.
@@ -15,15 +17,27 @@ export function emitParticles(s,dt){
   const fx=s.fx,e=s.engine;
   fx.emitters=fx.emitters.filter(source=>{
     const {definition,x,y}=source;
-    definition.nodes.forEach(([rate,low,high,spread,color],i)=>{
+    if(source.stopped)return false;
+    const pivots=[];
+    definition.nodes.forEach(([rate,low,high,spread,color,transform],i)=>{
+      let px=x,py=y,direction=0;
+      if(transform){
+        const parent=pivots[transform.parent];
+        if(parent)[px,py]=parent;
+        const radians=3.1415927/180;
+        const pivot=(transform.pivot+source.age*transform.spin)*radians;
+        px+=transform.distance*e.surfaceCos(pivot);py+=transform.distance*e.surfaceSin(pivot);
+        direction=(transform.angle+source.age*transform.rotation)*radians;
+      }
+      pivots.push([px,py]);
       const interval=1/rate;
       source.clocks[i]+=dt;
       while(source.clocks[i]>interval){
         source.clocks[i]-=interval;
         const speed=random1000(fx)*((low-high)/1000)+low;
-        const angle=random1000(fx)*(spread/1000)-spread*.5;
+        const angle=random1000(fx)*(spread/1000)-spread*.5+direction;
         // 0x41c344 and 0x41c35b add the stationary source velocity.
-        const particle={x,y,vx:e.surfaceCos(angle)*speed+0,vy:e.surfaceSin(angle)*speed+0,color,alpha:255};
+        const particle={x:px,y:py,vx:e.surfaceCos(angle)*speed+0,vy:e.surfaceSin(angle)*speed+0,color,alpha:transform?.alpha??255};
         fx.particles.push(particle);s.onParticle?.(particle);
       }
     });

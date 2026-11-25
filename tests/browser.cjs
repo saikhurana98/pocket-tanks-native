@@ -149,12 +149,12 @@ async function exercise(browser,touch){
       // The deal includes Super Skipper, Sniper Rifle, Laser, Popcorn, Color Bomb and an opening Single Shot.
       const fill=Crypto.prototype.getRandomValues;
       Crypto.prototype.getRandomValues=function(bytes){
-        if(bytes instanceof Uint32Array&&bytes.length===1){bytes[0]=51;return bytes}
+        if(bytes instanceof Uint32Array&&bytes.length===1){bytes[0]=114530;return bytes}
         return fill.call(this,bytes);
       };
     });
     await page.addInitScript(require("./record-sounds.cjs"));
-    await page.goto(url);await page.waitForFunction(()=>document.querySelector("#status").textContent.startsWith("Player 1"));
+    await page.goto(new URL("?mode=practice",url).href);await page.waitForFunction(()=>document.querySelector("#status").textContent.startsWith("Player 1"));
     assert(!requests.some(([,u])=>u.includes("/audio/")),"Audio downloaded before first interaction");
     if(!touch){await pixelParity(page);await projectileParity(page)}
     const screen=page.locator("#board");
@@ -223,6 +223,13 @@ async function exercise(browser,touch){
     await page.evaluate(async()=>{
       const {RangeDisplay}=await import("./presentation.mjs"),drawNumber=RangeDisplay.prototype.hitNumber;
       window.sawHitNumber=false;
+      window.winGlyphHeights=new Set();
+      const draw=CanvasRenderingContext2D.prototype.drawImage;
+      CanvasRenderingContext2D.prototype.drawImage=function(img,...args){
+        if(this.canvas===document.querySelector("#board canvas")&&img.src?.endsWith("/treb20.png")&&args[0]===224)
+          window.winGlyphHeights.add(args[5]);
+        return draw.call(this,img,...args);
+      };
       RangeDisplay.prototype.hitNumber=function(label){
         drawNumber.call(this,label);
         if(label.text==="60"&&this.ctx.canvas===document.querySelector("#board canvas"))window.sawHitNumber=true;
@@ -248,6 +255,11 @@ async function exercise(browser,touch){
     }
     assert.deepEqual(fired.map(label=>label.slice(5)).sort(),dealt.sort());
     assert(await page.locator("#fire").isHidden());
+    await page.locator("#yes").waitFor({state:"visible"});
+    if(!(await page.locator("#status").textContent()).includes("Tie")){
+      assert(await page.evaluate(()=>winGlyphHeights.size>1),"Winner lettering moved on the game canvas");
+      if(!mediaOnly)await page.waitForFunction(()=>played.some(f=>["bigpop.wav","cannonpop.wav","wooshpop.wav","pop.wav"].includes(f)));
+    }
     await tap(320,253);await status("Weapon shop");await tap(402,423);await status("Player 1");
     await click("#practice");await status("Player 1");
     assert.equal(await page.locator("#fire").getAttribute("aria-label"),"Fire Single Shot");

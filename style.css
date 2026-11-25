@@ -24,3 +24,13 @@ main:fullscreen nav:hover,main:fullscreen nav:focus-within,main.expanded nav:hov
 main:fullscreen:not(.tools) nav,main.expanded:not(.tools) nav{pointer-events:none}
 main.tools nav{opacity:1;pointer-events:auto}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+#menu{position:absolute;inset:0;cursor:default;container-type:inline-size}
+#menu[hidden],#targets[hidden]{display:none}
+#menu>*{position:absolute;margin:0}
+#menu button,#menu input{background:transparent;border:0;color:transparent;cursor:pointer;padding:0}
+#menu button:focus-visible,#menu input:focus-visible{outline:2px solid white;outline-offset:-2px}
+#menu input:focus{background:#160624;color:white;font:bold 3.7cqw sans-serif;cursor:text}
+#menu select{color:#9f0;background:#09000d;font:bold 1.5cqw sans-serif}
+#menu .menu-dialog,#menu .visible-button{display:grid;place-items:center;color:white;background:#18101f;border:2px solid #aaa;text-align:center;padding:2cqw}
+#menu .visible-button{padding:0;background:#555}
+#menu .preset-name,#menu .preset-name:focus{background:#000;color:white;font:bold 1.8cqw sans-serif;cursor:text;border:1px solid white}

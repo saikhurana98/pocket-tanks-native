@@ -41,6 +41,7 @@ supported.push("Dirt Mover","Digger","Well Digger");
 supported.push("Skipper","Super Skipper");
 supported.push("Sniper Rifle","Laser");
 supported.push("Popcorn","Color Bomb");
+for(const {roster} of packs)for(const name of roster)if(!supported.includes(name))supported.push(name);
 const atlas={"Single Shot":"blast","Big Shot":"big-blast","3 Shot":"three-blast","5 Shot":"five-blast"};
 const sounds=new Set(["cannon.wav","expmedium2.wav","expmedium.wav"]);
 const emitterPacks=["emitter.emi","emitter2.emi"].map(file=>decode(path.join("weapdata",file)));
@@ -51,10 +52,12 @@ function radialEmitter(pack,id,seconds){
   if(!emitter)throw Error("Missing particle emitter "+id);
   const nodes=Array.from(emitter[2].matchAll(/<NODE\s+([\s\S]*?)\/>/gi),m=>{
     const f=Object.fromEntries(Array.from(m[1].matchAll(/(\w+)="([^"]*)"/g),a=>a.slice(1)));
-    if(+f.pivitParent!==-1||+f.pivitDistance||+f.pivitRotationSpeed_DPS||+f.sprayAngle||+f.sprayRotationSpeed_DPS||
-       +f.pauseLength||+f.a!==255||+f.emitLength<seconds)throw Error("Unsupported particle node "+id);
-    return [+f.particlesPerSecond,+f.particleLowSpeed_PPS,+f.particleHighSpeed_PPS,
+    const node=[+f.particlesPerSecond,+f.particleLowSpeed_PPS,+f.particleHighSpeed_PPS,
       +f.spraySpread/180*3.1415927,[+f.r,+f.g,+f.b]];
+    if(+f.pivitParent!==-1||+f.pivitDistance||+f.pivitRotationSpeed_DPS||+f.sprayAngle||+f.sprayRotationSpeed_DPS||+f.a!==255)
+      node.push({parent:+f.pivitParent,distance:+f.pivitDistance,pivot:+f.pivitAngle,spin:+f.pivitRotationSpeed_DPS,
+        angle:+f.sprayAngle,rotation:+f.sprayRotationSpeed_DPS,alpha:+f.a});
+    return node;
   });
   if(!nodes.length)throw Error("Empty emitter "+id);
   return {seconds,nodes};
@@ -83,6 +86,7 @@ function compile(pack,name){
       if(f.DRAW_ANIM&&f.DRAW_ANIM!=="NONE"){
         actors[key].animation={frames:f.DRAW_ANIM.split(/\s+/).filter(x=>x!=="DONE"),speed:+f.DRAW_ANIM_SPEED,rotate:f.DRAW_ANIM_ROTATE==="TRUE",offsetX:Number(f.DRAW_ANIM_XOFFSET??0),offsetY:Number(f.DRAW_ANIM_YOFFSET??0)};
       }
+      if(f.BULLET_EMITTER_NAME&&f.BULLET_EMITTER_NAME!=="NONE")actors[key].flightEmitter=radialEmitter(pack,f.BULLET_EMITTER_NAME,.004);
       if(f.TIMED_DETONATION_FLAG==="TRUE"){
         actors[key].time=Number(f.TIMED_DETONATION_TIME);actors[key].onTimer=visit(f.TIMED_DETONATION_TRIGGER);
       }
@@ -106,11 +110,13 @@ function compile(pack,name){
         if(f.BOUNCE_TRIGGER&&f.BOUNCE_TRIGGER!=="NONE")actors[key].onBounce=visit(f.BOUNCE_TRIGGER);
       }
     }else if(block.type==="EXPLOSION"){
-      if(f.DRAW_DIRECTION!=="EXPLOSION_OUT"||f.DOUBLE_UP_FLAG!=="TRUE")throw Error(id);
+      if(f.DRAW_DIRECTION!=="EXPLOSION_OUT")throw Error(id);
       const colors=Array.from({length:+f.DRAW_COLOR_LENGTH},(_,i)=>rgb(+f.DRAW_COLOR+i*Number(f.DRAW_COLOR_DIRECTION)));
       actors[key]={type:"blast",radius:+f.RADIUS,damage:+f.DAMAGE,erase:f.ERASE_TERRAIN_FLAG==="TRUE",
         dirt:f.DIRTFALL_FLAG==="TRUE",knockback:f.THROW_TANK_FLAG==="TRUE",eraseDelay:+f.ERASE_DELAY,
         inward:f.ERASE_DIRECTION==="EXPLOSION_IN",colors};
+      if(f.DOUBLE_UP_FLAG==="FALSE")actors[key].singlePixel=true;
+      if(f.RANDOMIZE_ANGLEPOWER_FLAG==="TRUE")actors[key].randomize=true;
       if(atlas[name])actors[key].atlas=atlas[name];
     }else if(block.type==="SHRAPNEL"){
       actors[key]={type:"shrapnel",radius:+f.RADIUS,damage:+f.DAMAGE,knockback:f.THROW_TANK_FLAG==="TRUE",
@@ -122,6 +128,22 @@ function compile(pack,name){
     }else if(block.type==="DIRTMOVER"){
       actors[key]={type:"cutter",minWidth:+f.MIN_WIDTH,maxWidth:+f.MAX_WIDTH,height:+f.HEIGHT,thickness:+f.THICKNESS,
         backup:+f.BACKUP_DISTANCE,dirt:f.DIRTFALL_FLAG==="TRUE",low:f.LOW_COLOR.split(/\s+/).map(Number),high:f.HIGH_COLOR.split(/\s+/).map(Number)};
+    }else if(["CRUISER","DIRTBALL","DIRTSLINGER","MAGICWALL","FIRE","SUPERBALL","ZAPPER"].includes(block.type)){
+      const a=actors[key]={type:block.type.toLowerCase()};
+      if(f.EXPLOSION_TRIGGER)a.onImpact=visit(f.EXPLOSION_TRIGGER);
+      if(f.DRAW_ANIM)a.animation={frames:f.DRAW_ANIM.split(/\s+/).filter(n=>n!=="DONE"),speed:+(f.DRAW_ANIM_SPEED??f.DRAW_SPEED),
+        offsetX:Number(f.DRAW_ANIM_XOFFSET??0),offsetY:Number(f.DRAW_ANIM_YOFFSET??0)};
+      if(f.EMITTER_NAME)a.emitter=radialEmitter(pack,f.EMITTER_NAME,Number(f.EMITTER_TIME??.03));
+      if(f.ACTIVE_TIME||f.BURN_TIME)a.seconds=Number(f.ACTIVE_TIME??f.BURN_TIME)/1000;
+      for(const [key,field] of Object.entries({radius:"RADIUS",damage:"DAMAGE",width:"WIDTH",height:"HEIGHT",material:"DIRT_INDEX",
+        spikes:"SPIKE_COUNT",damageRate:"DAMAGE_PER_SECOND",damageRadius:"DAMAGE_RADIUS",bounceImpulse:"BOUNCE_IMPULSE",size:"DRAW_SIZE",
+        trailLength:"TRAIL_LENGTH",bump:"BUMP_DELTA",flashRate:"FLASH_PER_SECOND",splatSize:"SPLAT_SIZE",thickness:"SPLAT_THICKNESS"}))
+        if(f[field]!==undefined)a[key]=+f[field];
+      for(const [key,field] of [["direction","DIRECTION_MODE"],["splat","SPLAT_MODE"],["blend","BLIT_MODE"]])if(f[field])a[key]=f[field];
+      for(const [key,field] of [["low","LOW_COLOR"],["high","HIGH_COLOR"],["color","COLOR"]])if(f[field])a[key]=f[field].split(/\s+/).map(Number);
+      if(f.DRAW_COLOR)a.trail=rgb(+f.DRAW_COLOR);
+      if(a.splat)a.tint=rgb(a.splat==="GLUE"?233:37);
+      if(a.type==="zapper"){a.lowAlpha=Number(f.LOW_ALPHA);a.highAlpha=Number(f.HIGH_ALPHA)}
     }else throw Error("Unsupported actor "+block.type);
     if(actors[key]&&f.SOUND_EFFECT&&f.SOUND_EFFECT!=="NONE"){actors[key].sound=f.SOUND_EFFECT;sounds.add(f.SOUND_EFFECT)}
     return key;

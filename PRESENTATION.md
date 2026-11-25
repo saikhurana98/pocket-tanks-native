@@ -8,8 +8,8 @@ Four instrumented runs of the original Windows executable produced 9,489 present
 
 | Sequence | What the comparison showed |
 | --- | --- |
-| Launcher → title → mode selection | The PC displays the Deluxe launcher, animates the logo and bouncing balls, and sounds a click, a title-start cue and separate bounce samples. The browser opens on a playable range or shop. These screens, their music sequence and the transition animations remain open. |
-| Two-player setup → shop | The PC steps through both players' names and colors and animates the menu lettering. The native two-player shortcut skips both screens. |
+| Launcher → title → mode selection | The PC displays the Deluxe launcher, animates the logo and bouncing balls, and sounds a click, a title-start cue and separate bounce samples. The root URL opens the Deluxe launcher. The title uses the original logo, music and bounce samples. Title ball motion and credits still need frame alignment. |
+| Two-player setup → shop | The PC steps through both players' names and colors and animates the menu lettering. The mode menu now opens both setup screens and carries their names and colors into the match. The two-player deep link opens the shop directly. |
 | Manual pick → Random | On PC, one manual pick left 19 items. Each of the next 19 pick sounds coincided with the first presented frame showing one fewer weapon in the center. The native browser now draws all 19 deals individually, including the empty shop with both completed inventories. It plays the original samples and displays the original Random button art and busy cursor. The departing shop lettering and field entrance remain open. |
 | Open inventory → select | The same pointer path selected Quad Missile on PC and Single Shot on the web. The PC popup region produced 22 distinct images while opening and the web produced 3. The native port now plays the original open and selection clicks. Popup scrolling, pointer handling and the transition still differ. |
 | Aim and power | The 60° to 59° change ended with identical readout pixels. Two native readout states covered 58 of 59 original frames. The 20 to 21 power change matched both original states in order across all 56 original frames. The PC also clicks when entering and committing slider adjustment. Those cues now play on the web. |
@@ -42,6 +42,10 @@ node tests/presentation-flow.cjs http://127.0.0.1:8213/
 node tests/browser.cjs http://127.0.0.1:8213/
 ```
 
-The first test checks the shot crops against their current per-frame difference ceilings, the presentation-boundary blast masks, control pixels, the audible deal sequence, mid-deal reset and rock-sound cadence. The second exercises actual browser gameplay through rematch. CPU play, LAN, options, all weapon-specific effects and the remaining Deluxe weapons are outside these recordings.
+The first test checks the shot crops against their current per-frame difference ceilings, the presentation-boundary blast masks, control pixels, the audible deal sequence, mid-deal reset and rock-sound cadence. The second exercises actual browser gameplay through rematch. These four recordings predate the new weapon and menu coverage. The README lists the additional comparisons.
 
 The Windows Playwright WebKit build exposes no Web Audio context. It requests the correct HTML audio files, but its play promises remained pending in this environment. Audible WebKit playback still needs verification on a device with an active audio backend.
+
+## Match ending
+
+A separate 20-shot PC match reached the victory sequence. At 0x457600 the game advances the letter phases and emits confetti above the winning tank. At 0x4578c0 it draws the seven glyphs. Their captured origins on one frame were (146,214), (167,219), (174,220), (187,217), (200,211), (213,204) and (224,201). The native regression checks every position. The browser match test reaches game over, checks for moving glyphs and firework audio, and accepts a rematch.

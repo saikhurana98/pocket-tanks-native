@@ -133,7 +133,7 @@ async function verifyControls(page) {
   const browser=await chromium.launch({executablePath:process.env.EDGE_PATH});
   try{
     const page=await browser.newPage();
-    await page.goto(process.argv[2]);await page.waitForFunction(()=>document.querySelector("#status").textContent.startsWith("Player"));
+    await page.goto(new URL("?mode=practice",process.argv[2]).href);await page.waitForFunction(()=>document.querySelector("#status").textContent.startsWith("Player"));
     await verifyFilm(page);await verifyHitGlyphs(page);await verifySoil(page);await verifyControls(page);
     // Start a fresh audio context so the draft monitor also observes sample decoding.
     await page.reload();await page.waitForFunction(()=>document.querySelector("#status").textContent.startsWith("Player"));
