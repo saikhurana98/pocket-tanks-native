@@ -22,10 +22,13 @@ Four instrumented runs of the original Windows executable produced 9,489 present
 
 ## Single Shot in motion
 
-Two measurements answer different questions.
+The original 57 images at 60° and power 20 remain the reference. All 205,200 RGBA pixels now match. The older animation callback read the framebuffer and physics counters at different times. In the first crop it read flight counter 9 while the visible trail corresponded to updates 4–5.
 
-- **Projectile and impact together.** The viewer replays the captured range at 60° and power 20. Of 57 original 60 × 60 pixel crops, 8 match exactly at the recorded physics counters. There are 9,985 differing pixels across the 205,200 compared. The first sample differs in 16 pixels at flight update 9. These older captures read the screen from a browser animation callback, so the result includes any delay between the screen image and the sampled simulation state. The viewer preserves that timing.
-- **Explosion at presentation.** A fresh run samples the framebuffer at the original display boundary and records the explosion counter on that same call. The native replay matches 29 of 35 explosion-color masks exactly. The remaining six frames differ by 12 pixels in total, with a maximum of three in a frame. This measures the 46 × 46 explosion region and its palette. The surrounding scene is outside this comparison.
+A separate REA browser scenario fired the same shot in the PC executable. The probe counted calls at 0x4343d0 and 0x44bc50 and limited the PC loop to one 4 ms update per presentation. It read the framebuffer and bullet history together. Two PC runs produced identical effect-mask digests for all 188 flight updates and 166 impact updates. The REA scenario evidence ID is `ev_ee7e34ed265517b8405c772d63bbb1e6f1325083142c5e95b97a85db8af9f885`.
+
+The PC copies positions into the trail at 130 Hz. Its renderer at 0x4362a0 joins successive samples from newest to oldest, with the first covered pixel taking precedence and an eight-bit blend denominator. The archived crops were aligned using only PC effect masks. The viewer keeps the original callback counters and shows the interval of indistinguishable PC presentations. The native regression has a zero-pixel tolerance for each crop and compares the effect mask at every consecutive update in a 120 × 100 region.
+
+A second shot measured 35 blast presentations on different terrain. The white floating score covers 12 explosion pixels across six presentations. The test compares the visible blast against the original foreground coverage on each presentation. All 35 masks match.
 
 ## Evidence and reproduction
 

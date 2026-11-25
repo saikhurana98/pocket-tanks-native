@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || "playwright-core");
-const budget = require("./captures/shot-diff-budget.json");
+const oracle = require("./captures/shot-presentations.json");
 const impactTicks = require("./captures/presented-blast.json");
 const controls = require("./captures/control-regions.json");
 const hitGlyphs = require("./captures/hit-numbers.json").glyphs;
@@ -33,10 +33,34 @@ async function verifyFilm(page) {
     const {replayFilm} = await import("./tests/shot-film.mjs");
     return (await replayFilm()).map(f=>f.different);
   });
-  assert.equal(result.length,budget.length);
-  result.forEach((n,i)=>assert(n<=budget[i],`Frame ${i+1} differs in ${n} pixels, previously ${budget[i]}`));
+  assert.equal(result.length,57);
+  result.forEach((n,i)=>assert.equal(n,0,`Frame ${i+1} differs in ${n} pixels`));
   console.log(`Single Shot crop replay: ${result.filter(n=>n===0).length}/${result.length} exact; ${result.reduce((a,b)=>a+b)} differing pixels`);
-  const errors = await page.evaluate(async ticks => {
+  const mismatches=await page.evaluate(async ref=>{
+    const {loadEngine,setup,step,launch}=await import("./sim.mjs");
+    const {RangeDisplay,loadArt}=await import("./presentation.mjs");
+    const canvas=document.createElement("canvas");canvas.width=800;canvas.height=600;
+    const range=await(await fetch("range.json")).json();
+    const display=new RangeDisplay(canvas,await loadArt(),range),state=setup(await loadEngine(),range);
+    const colors=new Map(ref.palette.map(([r,g,b],i)=>[r+g*256+b*65536,i+1]));
+    display.bind(state);launch(state,60,20);
+    const bad=[];let tick=0;
+    for(const [last,hash] of ref.runs)while(tick<last){
+      step(state);tick++;display.draw(state,{angles:[60,120],powers:[20,20],turnTime:0},tick*4);
+      const rgba=display.ctx.getImageData(...ref.rect).data,mask=new Uint8Array(rgba.length/4);
+      for(let k=0;k<mask.length;k++){
+        const i=k*4,r=rgba[i],g=rgba[i+1],b=rgba[i+2];
+        mask[k]=colors.get(r+256*g+65536*b)??(g>=24&&(g-24)%23===0&&b>=g&&r<30?g:0);
+      }
+      const digest=await crypto.subtle.digest("SHA-256",mask);
+      if(Array.from(new Uint8Array(digest),n=>n.toString(16).padStart(2,"0")).join("")!==hash)bad.push(tick);
+    }
+    if(tick!==ref.flight+ref.impact)throw Error("Incomplete PC recording");
+    return bad;
+  },oracle);
+  assert.deepEqual(mismatches,[],"PC effect visibility at consecutive physics updates");
+  console.log("188 consecutive flight and 166 impact updates match the original effect masks");
+  const errors = await page.evaluate(async ({ticks,foreground}) => {
     const {loadEngine,setup,launch,step} = await import("./sim.mjs");
     const engine = await loadEngine(),range = await (await fetch("range.json")).json();
     const state = setup(engine,range);
@@ -55,12 +79,13 @@ async function verifyFilm(page) {
       const phase=state.blasts[0]?.phase??0;
       const rgba=(g,index)=>g.getImageData(index%8*46,Math.floor(index/8)*46,46,46).data;
       const a=rgba(reference,i),b=rgba(atlas,phase);let diff=0;
+      // The original draws the white floating score above the explosion.
+      for(const pixel of foreground[i])b.fill(0,4*pixel,4*pixel+4);
       for(let k=0;k<a.length;k+=4)if(a[k]!==b[k]||a[k+1]!==b[k+1]||a[k+2]!==b[k+2]||a[k+3]!==b[k+3])diff++;
       return diff;
     });
-  },impactTicks);
-  const remaining = new Map([[77,3],[82,3],[86,2],[95,2],[100,1],[105,1]]);
-  errors.forEach((n,i)=>assert(n<=(remaining.get(impactTicks[i])||0),`Impact update ${impactTicks[i]} has ${n} different pixels`));
+  },{ticks:impactTicks,foreground:require("./captures/blast-foreground.json")});
+  errors.forEach((n,i)=>assert.equal(n,0,`Impact update ${impactTicks[i]} differs`));
   console.log(`Display-boundary blast: ${errors.filter(n=>!n).length}/${errors.length} exact color masks`);
 }
 

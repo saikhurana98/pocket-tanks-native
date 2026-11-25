@@ -12,7 +12,7 @@
 </head>
 <body>
   <h1>Single Shot frame comparison</h1>
-  <p>Each crop follows the projectile or impact across 60 × 60 game pixels. Yellow marks pixels that differ at the recorded physics counters.</p>
+  <p>Each crop follows the projectile or impact across 60 × 60 game pixels. Yellow marks differing pixels. The PC presentation interval identifies updates that produced the same visible effect.</p>
   <section>
     <figure><canvas id="pc" width="60" height="60"></canvas><figcaption>PC capture</figcaption></figure>
     <figure><canvas id="web" width="60" height="60"></canvas><figcaption>Native replay</figcaption></figure>
@@ -33,7 +33,7 @@
         slider.value=i+1;
         document.querySelector("#number").textContent=(i+1)+" of "+frames.length;
         previous.disabled=i===0;next.disabled=i===frames.length-1;
-        detail.textContent="Flight update "+frame.flight+" · Impact update "+frame.impact+" · "+frame.different+" of 3,600 pixels differ";
+        detail.textContent="PC presentation "+frame.presented.join("–")+" · Sampled counters "+frame.flight+" / "+frame.impact+" · "+frame.different+" of 3,600 pixels differ";
       }
       slider.disabled=false;slider.max=frames.length;slider.oninput=()=>show(slider.valueAsNumber-1);
       previous.onclick=()=>show(slider.valueAsNumber-2);next.onclick=()=>show(slider.valueAsNumber);

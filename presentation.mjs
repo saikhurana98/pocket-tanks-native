@@ -197,9 +197,15 @@ export class RangeDisplay {
     const samples=[];
     const length=weapon.trailLength;
     const size=weapon.size+1;
-    for(let i=0;i<length;i++){
-      const p=positions[positions.length-1-(length-1-i)*2];
-      if(p)samples.push([Math.trunc(p[0]),Math.trunc(p[1]),1+(i+1)*Math.floor(255/length)]);
+    if(!length)return;
+    const offset=Math.floor(weapon.size/2);
+    const first=Math.max(0,positions.length-length-1);
+    for(let i=first;i<positions.length-1;i++){
+      const alpha=255-(positions.length-2-i)*Math.floor(255/length);
+      const [x,y]=positions[i],[endX,endY]=positions[i+1];
+      rasterLine([Math.trunc(x),Math.trunc(y),Math.trunc(endX),Math.trunc(endY)],(px,py)=>{
+        samples.push([px-offset,py-offset,alpha]);
+      });
     }
     if(!samples.length)return;
     const left=Math.max(0,Math.min(...samples.map(p=>p[0]))),top=Math.max(0,Math.min(...samples.map(p=>p[1])));
@@ -209,7 +215,7 @@ export class RangeDisplay {
     for(const [x,y,a] of samples)for(let j=y;j<y+size;j++)for(let i=x;i<x+size;i++){
       if(i<left||j<top||i>=right||j>=bottom)continue;
       const k=((j-top)*pixels.width+i-left)*4;
-      for(let c=0;c<3;c++){const color=weapon.trail[c];pixels.data[k+c]=Math.trunc((base[k+c]*(255-a)+color*a)/255)}
+      for(let c=0;c<3;c++)pixels.data[k+c]=base[k+c]+(((weapon.trail[c]-base[k+c])*a)>>8);
     }
     this.ctx.putImageData(pixels,left,top);
   }

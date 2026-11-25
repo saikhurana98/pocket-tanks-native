@@ -24,10 +24,12 @@ export async function replayFilm() {
   if (!launch(state,angle,power)) throw Error("Single Shot launch failed");
   let elapsed = 0;
 
-  // Keep the counters attached to the PC capture. A presentation lag is a
-  // finding; searching nearby native frames would hide it.
+  // The historical animation callback read the screen and the simulation
+  // counters separately. These presentation intervals were established by
+  // a second PC-only replay before comparing any native pixels.
   return frames.map(([flight,impact,x,y],i) => {
-    while (elapsed < flight+impact) {
+    const presented=capture.presented[i];
+    while (elapsed < presented[0]) {
       step(state);
       elapsed++;
     }
@@ -44,6 +46,6 @@ export async function replayFilm() {
       mask.data[j+3] = 255;
       if (changed) different++;
     }
-    return {flight,impact,x,y,pc,web,mask,different};
+    return {flight,impact,presented,x,y,pc,web,mask,different};
   });
 }

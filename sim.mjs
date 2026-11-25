@@ -95,7 +95,7 @@ function releaseDue(s){
     if(actor.sound)s.onSound?.(actor.sound);
     if(actor.type==="bullet"){
       e.launch(x,y,angle,power);
-      const ball={actor,bounces:actor.bounces??0,frame:0,frameTime:0,age:0,fresh:true,x,y,vx:e.vx.value,vy:e.vy.value,trail:[[x,y]]};
+      const ball={actor,bounces:actor.bounces??0,frame:0,frameTime:0,age:0,fresh:true,x,y,vx:e.vx.value,vy:e.vy.value,trailClock:0,trail:[[x,y],[x,y]]};
       if(actor.flightEmitter)ball.emitter=startEmitter(s.fx,{...actor.flightEmitter,seconds:Infinity},x,y);
       s.balls.push(ball);
     }else if(actor.type==="marker"){
@@ -255,8 +255,13 @@ function stepActors(s) {
       while(speed>0&&ball.frameTime>1/speed){ball.frameTime-=1/speed;ball.frame=(ball.frame+1)%frames.length}
     }
     if(ball.actor.trailLength){
-      ball.trail.push([ball.x,ball.y]);
-      if(ball.trail.length>2*ball.actor.trailLength-1)ball.trail.shift();
+      // 0x435b2b samples the bullet history on a separate 130 Hz clock.
+      ball.trailClock+=DT;
+      while(ball.trailClock>1/130){
+        ball.trailClock-=1/130;
+        ball.trail.push([ball.x,ball.y]);
+        if(ball.trail.length>ball.actor.trailLength+1)ball.trail.shift();
+      }
     }
     return true;
   });
