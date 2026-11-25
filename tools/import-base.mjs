@@ -152,6 +152,22 @@ function compile(pack,name){
   return {name,slot:packs.indexOf(pack)*30+pack.roster.indexOf(name),entry:visit(source.TRIGGER),actors,triggers};
 }
 const weapons=supported.map(name=>compile(packs.find(p=>p.roster.includes(name)),name));
+// These 8-bit BMPs store field strengths. Their display palettes are unrelated
+// to the fire and gas colours selected by the game's compositor.
+const plasmaFrames={};
+for(const weapon of weapons)for(const actor of Object.values(weapon.actors)){
+  if(actor.blend!=="TRANS"&&actor.blend!=="GAS")continue;
+  for(const name of actor.animation.frames){
+    if(plasmaFrames[name])continue;
+    const bmp=fs.readFileSync(path.join(installation,"weapdata",name));
+    const offset=bmp.readUInt32LE(10),w=bmp.readInt32LE(18),h=bmp.readInt32LE(22);
+    if(bmp.readUInt16LE(28)!==8||bmp.readUInt32LE(30)!==0||h<=0)throw Error(name);
+    const stride=(w+3)&~3,indices=[];
+    for(let y=h-1;y>=0;y--)indices.push(...bmp.subarray(offset+y*stride,offset+y*stride+w));
+    plasmaFrames[name]=[w,h,indices];
+  }
+}
+fs.writeFileSync(path.join(project,"art","plasma-frames.json"),JSON.stringify(plasmaFrames)+"\n");
 fs.writeFileSync(path.join(project,"engine","weapons.json"),JSON.stringify(weapons)+"\n");
 for(const sound of sounds)fs.copyFileSync(path.join(installation,"weapdata",sound),path.join(project,"audio",sound));
 console.log("Read "+packs.map(p=>p.roster.length).join(" + ")+" base weapons. Compiled "+weapons.length+" playable weapon programs.");

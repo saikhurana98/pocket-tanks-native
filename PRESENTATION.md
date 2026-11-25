@@ -8,7 +8,7 @@ Four instrumented runs of the original Windows executable produced 9,489 present
 
 | Sequence | What the comparison showed |
 | --- | --- |
-| Launcher → title → mode selection | The PC displays the Deluxe launcher, animates the logo and bouncing balls, and sounds a click, a title-start cue and separate bounce samples. The root URL opens the Deluxe launcher. The title uses the original logo, music and bounce samples. Title ball motion and credits still need frame alignment. |
+| Launcher → title → mode selection | The title uses the five projected PC orbit points, 200 original depth and rotation sprites, moving rainbow dividers and the four-page credit sequence. All five projected coordinates and sprite indices match a captured PC presentation. The credit comparison covers 371 glyphs with an empty match history. |
 | Two-player setup → shop | The PC steps through both players' names and colors and animates the menu lettering. The mode menu now opens both setup screens and carries their names and colors into the match. The two-player deep link opens the shop directly. |
 | Manual pick → Random | On PC, one manual pick left 19 items. Each of the next 19 pick sounds coincided with the first presented frame showing one fewer weapon in the center. The native browser now draws all 19 deals individually, including the empty shop with both completed inventories. It plays the original samples and displays the original Random button art and busy cursor. The departing shop lettering and field entrance remain open. |
 | Open inventory → select | The same pointer path selected Quad Missile on PC and Single Shot on the web. The PC popup region produced 22 distinct images while opening and the web produced 3. The native port now plays the original open and selection clicks. Popup scrolling, pointer handling and the transition still differ. |
@@ -45,6 +45,14 @@ node tests/browser.cjs http://127.0.0.1:8213/
 The first test checks the shot crops against their current per-frame difference ceilings, the presentation-boundary blast masks, control pixels, the audible deal sequence, mid-deal reset and rock-sound cadence. The second exercises actual browser gameplay through rematch. These four recordings predate the new weapon and menu coverage. The README lists the additional comparisons.
 
 The Windows Playwright WebKit build exposes no Web Audio context. It requests the correct HTML audio files, but its play promises remained pending in this environment. Audible WebKit playback still needs verification on a device with an active audio backend.
+
+## Menu motion and projectile visibility
+
+The mode selector and both player setup screens use the PC letter queue at `0x41eb60`. Each glyph accelerates on the 4 ms game clock. Selecting a mode sends the other rows back to their origins before the chosen row leaves. The browser regression compares the first moving glyph in each mode row with the PC capture at 56 ms and compares the settled selector pixel for pixel.
+
+Fire Bolt, Napalm and Hail Storm use indexed strength masks. The PC updates the fields at 100 Hz in `0x428020`. Fire draws heat upward and gas diffuses in four directions. The framebuffer compositor at `0x4136f0` scales the intensity by eight and blends it with the pixel behind the effect. Four in-flight Fire Bolt samples matched the original peak red value of 231. A separate high-power Single Shot trace reached world y = −259.98 while the PC camera stayed fixed.
+
+The browser tests replay 16 original in-bounds samples across five weapons. The arsenal sweep also checks that eligible airborne shells change pixels against the terrain during ordinary gameplay. Run `tests/menu-flight.cjs` and `tests/arsenal-browser.cjs` with the site URL.
 
 ## Match ending
 

@@ -1,6 +1,7 @@
 import {drawWinner} from "./victory.mjs";
 import {blastSprite} from "./blast-art.mjs";
 import {paintParticles} from "./particles.mjs";
+import {paintPlasma} from "./plasma.mjs";
 import {cutterStripes,rasterLine} from "./cutter.mjs";
 import sprites from "./art/animated-shells.json" with {type:"json"};
 import widths from "./art/arsenal.json" with {type:"json"};
@@ -276,7 +277,7 @@ export class RangeDisplay {
       }
       if(ball.trail&&ball.actor.trail)this.projectile(ball.actor,ball);
       const animation=ball.actor.animation;
-      if(animation){
+      if(animation&&ball.actor.blend!=="TRANS"&&ball.actor.blend!=="GAS"){
         const [sx,sy,w,h]=sprites[animation.frames[ball.frame]];
         c.save();c.translate(Math.trunc(ball.x),Math.trunc(ball.y));
         if(animation.rotate)c.rotate(Math.atan2(ball.vy,ball.vx)+Math.PI/2);
@@ -286,6 +287,7 @@ export class RangeDisplay {
         c.restore();
       }
     }
+    paintPlasma(c,s.fx);
     for(const b of s.blasts){
       const a=b.actor,size=a.radius*2+2,x=Math.trunc(b.x)-a.radius,y=Math.trunc(b.y)-a.radius;
       if(a.atlas)this.tile(a.atlas,b.phase,8,size,size,x,y);

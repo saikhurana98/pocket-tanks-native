@@ -1,9 +1,10 @@
 import widths from "./art/menu-font.json" with {type:"json"};
 import {weapons} from "./match.mjs";
+import {menuGroups,menuInk,glyphPosition,groupDuration,orbitSprites,drawCredits} from "./menu-motion.mjs";
 
 const colors=["Red","Orange","Yellow","Green","Cyan","Blue","Purple","Pink"];
 export const ink=["#ff0000","#ff9600","#ffff00","#00ff00","#00ffff","#5872ff","#af42ff","#ff38ff"];
-const menuImages=["launch","title","mode","setup","options","cpu","logo","ball","font","start0","start1","start2","depot0","depot1","depot2"];
+const menuImages=["launch","title","mode","setup","options","cpu","logo","orbit","font","credits","start0","start1","start2","depot0","depot1","depot2"];
 menuImages.push("preset-load","preset-save","preset-delete");
 export async function loadMenus(){
   return Object.fromEntries(await Promise.all(menuImages.map(async name=>{
@@ -13,7 +14,7 @@ export async function loadMenus(){
 export class Navigation{
   constructor(layer,display,art,actions){
     Object.assign(this,{layer,display,art,actions,page:null,players:[{name:"Player 1",color:0},{name:"Player 2",color:1}],
-      available:weapons.map((w,i)=>i).sort((a,b)=>weapons[a].slot-weapons[b].slot),fonts:new Map(),timers:[]});
+      available:weapons.map((w,i)=>i).sort((a,b)=>weapons[a].slot-weapons[b].slot),fonts:new Map()});
     try{const prefs=JSON.parse(localStorage.getItem("pt-deluxe-menu"));
       if(prefs?.players?.length===2)this.players=prefs.players;
       if(prefs?.removed?.length<weapons.length)this.removed=prefs.removed;
@@ -21,6 +22,7 @@ export class Navigation{
     }catch{}
     this.removed??=[];
     this.presets??=new Map();
+    this.letterSheets={mode:menuInk(art.mode),setup:menuInk(art.setup)};
   }
   save(){try{localStorage.setItem("pt-deluxe-menu",JSON.stringify({players:this.players,removed:this.removed,presets:[...this.presets]}))}catch{}}
   area(tag,label,x,y,w,h){
@@ -32,12 +34,12 @@ export class Navigation{
     el.onpointerenter=()=>this.hot=label;el.onpointerleave=()=>this.hot=null;
     el.onpointerdown=()=>this.pressed=label;
     el.onpointerup=el.onpointercancel=()=>this.pressed=null;
-    el.onclick=()=>{this.actions.unlock();this.actions.effect("crick.wav");fn()};
+    el.onclick=()=>{if(this.departure)return;this.actions.unlock();this.actions.effect("crick.wav");fn()};
     return el;
   }
   hide(){
+    this.departure=null;this.groupKey=null;
     this.page=null;this.layer.replaceChildren();this.layer.hidden=true;this.hot=null;this.pressed=null;
-    this.timers.forEach(clearTimeout);this.timers=[];
   }
   show(page){
     this.hide();this.page=page;this.layer.hidden=false;this.age=0;
@@ -50,20 +52,20 @@ export class Navigation{
       this.button("Visit Weapon Depot",75,500,272,50,()=>window.open("https://www.blitwise.com/pocket-tanks","_blank","noopener"));
       this.actions.track(null);
     }else if(page==="title"){
-      this.logo={y:-315,vy:400,bounces:0,clock:0};this.actions.track("pocket");
+      this.logo={y:-315,vy:400,bounces:0,clock:0};
+      this.orbit={ticks:0,y:-440,vy:400,bounces:0};this.actions.track("pocket");
       this.actions.effect("titlestart.wav");
-      for(const ms of [1050,1999,2482])this.timers.push(setTimeout(()=>this.actions.effect("ballbounce.wav"),ms));
       go("Start",514,549,162,33,"mode");go("Quit",689,549,94,33,"launch");
     }else if(page==="mode"){
       for(const [i,label] of ["1 Player","2 Players","LAN Game","Target Practice","Return to Title","Options"].entries()){
         const y=[90,140,190,240,290,390][i];
-        this.button(label,[277,255,265,167,166,286][i],y,[246,289,270,467,468,227][i],44,()=>{
+        this.button(label,[277,255,265,167,166,286][i],y,[246,289,270,467,468,227][i],44,()=>this.leaveLetters(i,()=>{
           if(i<=1){this.single=i===0;this.show("player1")}
           else if(i===2)this.show("network");
           else if(i===3)this.actions.start("practice");
           else if(i===4)this.show("title");
           else {this.working=this.removed.slice();this.show("options")}
-        });
+        }));
       }
     }else if(page==="player1"||page==="player2"){
       const id=Number(page.slice(-1))-1,player=this.players[id];
@@ -74,10 +76,10 @@ export class Navigation{
       colors.forEach((label,i)=>this.button(label,201+i*50,268,45,40,()=>{
         if(this.players[1-id].color!==i){player.color=i;this.save()}
       }));
-      this.button("Continue",273,364,254,48,()=>{
+      this.button("Continue",273,364,254,48,()=>this.leaveLetters(null,()=>{
         player.name=player.name.trim()||"Player "+(id+1);this.save();
         if(!id)this.show(this.single?"cpu":"player2");else this.actions.start("match");
-      });
+      }));
     }else if(page==="options"){
       const included=this.area("select","Available in game",40,117,161,216),removed=this.area("select","Removed list",255,117,161,216);
       included.size=removed.size=16;
@@ -124,6 +126,46 @@ export class Navigation{
     }
   }
   back(){const pages={launch:"launch",title:"launch",mode:"title",player1:"mode",player2:"player1",cpu:"player1",options:"mode",network:"mode",computer:"mode"};this.show(this.page.startsWith("preset-")?"options":pages[this.page])}
+  letterGroups(){
+    const player=this.players[this.page==="player2"?1:0];
+    const editing=document.activeElement===this.layer.querySelector("input");
+    const key=JSON.stringify([this.page,player.name,player.color,editing]);
+    if(this.groupKey!==key){
+      this.groups=menuGroups(this.page,player,colors[player.color],ink[player.color],editing);
+      this.settleTime=Math.max(...this.groups.map(g=>groupDuration(g,false)));
+      this.groupKey=key;
+    }
+    return this.groups;
+  }
+  leaveLetters(selected,finish){
+    const groups=this.letterGroups();
+    const start=Math.max(this.age,this.settleTime);
+    const delay=selected===null?0:Math.max(...groups.map((g,i)=>i===selected?0:groupDuration(g,true)));
+    const duration=Math.max(...groups.map((g,i)=>groupDuration(g,true)+(i===selected?delay:0)));
+    this.departure={selected,start,delay,end:start+duration,finish};
+  }
+  drawLetters(){
+    const mode=this.page==="mode",plate=mode?this.art.mode:this.art.setup;
+    const sheet=mode?this.letterSheets.mode:this.letterSheets.setup,c=this.display.ctx;
+    const exit=this.departure;
+    if(exit&&this.age>=exit.end){exit.finish();return}
+    const groups=this.letterGroups();
+    if(mode&&!exit&&this.age>=this.settleTime)return;
+    c.save();c.beginPath();c.rect(0,0,800,450);c.clip();c.imageSmoothingEnabled=false;
+    c.drawImage(plate,0,0,1,450,0,0,800,450);
+    for(const [i,group] of groups.entries()){
+      const start=exit?exit.start+(i===exit.selected?exit.delay:0):Infinity;
+      const leaving=this.age>=start;
+      const time=leaving?this.age-start:this.age;
+      for(const [j,g] of group.glyphs.entries()){
+        const [x,y]=glyphPosition(group,j,time,leaving).map(Math.trunc);
+        if(x+g.w<=0||x>=800||y+40<=0||y>=450)continue;
+        if(g.ink)this.font(g.ch,x,y,{color:g.ink});
+        else c.drawImage(sheet,g.x,g.y,g.w,40,x,y,g.w,40);
+      }
+    }
+    c.restore();
+  }
   font(text,x,y,{color="#fff",scale=1,center=false,right=false,maxWidth=Infinity}={}){
     const key=color;let atlas=this.fonts.get(key);
     if(!atlas){atlas=document.createElement("canvas");atlas.width=this.art.font.width;atlas.height=this.art.font.height;
@@ -148,18 +190,32 @@ export class Navigation{
     }else if(p==="title"){
       const logo=this.logo;logo.clock+=dt;
       while(logo.clock>=.004){logo.clock-=.004;if(logo.bounces===3)continue;logo.vy+=800*.004;logo.y+=logo.vy*.004;
-        if(logo.y>73){logo.y=73;logo.vy*=-.45;logo.bounces++;this.actions.effect("logobounce.wav")}}
+        if(logo.y>73){
+          logo.y=73;logo.vy*=-.45;logo.bounces++;this.actions.effect("logobounce.wav");
+          if(logo.bounces===3)logo.creditStart=this.age-logo.clock;
+        }}
+      const orbit=this.orbit,ticks=Math.max(0,Math.floor(this.age/.004)-142);
+      while(orbit.ticks<ticks){
+        orbit.ticks++;
+        if(orbit.bounces===3)continue;
+        orbit.vy+=900*.004;orbit.y+=orbit.vy*.004;
+        if(orbit.y>-120){orbit.y=-120;orbit.vy*=-.5;orbit.bounces++;this.actions.effect("ballbounce.wav")}
+      }
+      const balls=orbitSprites(orbit.ticks*.004,orbit.y);
+      const drawBall=b=>c.drawImage(this.art.orbit,b.frame%10*50,Math.floor(b.frame/10)*38,50,38,b.x-25,b.y-19,50,38);
+      balls.filter(b=>b.depth>=305).forEach(drawBall);
       c.drawImage(this.art.logo,190,Math.trunc(logo.y));
-      const text=["Blitwise Productions Presents","Pocket Tanks","The Ultimate One-on-One Artillery Game"];
-      for(let i=0;i<3;i++){const t=this.age-1.4-i*.45;if(t<0)continue;this.font(text[i],400+Math.max(0,1-t)*800,324+i*31,{scale:i===2?.53:.72,center:true})}
-      for(let i=0;i<3;i++){
-        const x=(this.age*(70+i*17)+i*291)%854-27,y=266-Math.abs(Math.sin(this.age*(1.5+i*.18)+i))*106;
-        c.drawImage(this.art.ball,0,0,28,27,Math.trunc(x),Math.trunc(y),28-i*4,27-i*4)}
-    }else if(p.startsWith("player")){
-      const id=Number(p.slice(-1))-1,pl=this.players[id];
-      this.font("Player "+(id+1),400,89,{center:true,color:"#aaa"});
-      if(document.activeElement!==this.layer.querySelector("input"))this.font(pl.name,413,165);
-      this.font(colors[pl.color],413,215,{color:ink[pl.color]});c.strokeStyle="#bbb";c.lineWidth=2;c.strokeRect(203+pl.color*50,269,42,37);
+      balls.filter(b=>b.depth<305).forEach(drawBall);
+      c.fillStyle="#000";c.fillRect(0,315,800,2);c.fillRect(0,539,800,2);
+      for(const [source,direction] of [[315,-1],[539,1]]){
+        const y=428+direction*Math.min(Math.abs(source-428),Math.trunc(this.age*200));
+        const x=(-direction*Math.trunc(this.age*350)%800+800)%800;
+        c.drawImage(this.art.title,0,source,800,2,x,y,800,2);
+        if(x)c.drawImage(this.art.title,0,source,800,2,x-800,y,800,2);
+      }
+      if(logo.creditStart!==undefined)drawCredits(c,this.art.credits,this.age-logo.creditStart);
+    }else if(p==="mode"||p.startsWith("player")){
+      this.drawLetters();
     }else if(p==="cpu"){
       c.strokeStyle="#bbb";c.lineWidth=2;c.strokeRect(68+(this.level-1)*66,244,62,37);
     }else if(p==="options"){

@@ -1,4 +1,5 @@
 import {beginActor,advanceActor} from "./deluxe-actors.mjs";
+import {advancePlasmaFields} from "./plasma.mjs";
 import {advanceVictory} from "./victory.mjs";
 import {weapons,volleys,roll,prepareColliders,hitsTank,applyBlast,throwTank,advanceHitNumbers} from "./match.mjs";
 import {outsideContact,rebound} from "./contour.mjs";
@@ -94,7 +95,7 @@ function releaseDue(s){
     if(actor.sound)s.onSound?.(actor.sound);
     if(actor.type==="bullet"){
       e.launch(x,y,angle,power);
-      const ball={actor,bounces:actor.bounces??0,frame:0,frameTime:0,age:0,fresh:true,x,y,vx:e.vx.value,vy:e.vy.value,trail:[]};
+      const ball={actor,bounces:actor.bounces??0,frame:0,frameTime:0,age:0,fresh:true,x,y,vx:e.vx.value,vy:e.vy.value,trail:[[x,y]]};
       if(actor.flightEmitter)ball.emitter=startEmitter(s.fx,{...actor.flightEmitter,seconds:Infinity},x,y);
       s.balls.push(ball);
     }else if(actor.type==="marker"){
@@ -197,6 +198,7 @@ export function step(s) {
   if(s.pool)return;
   if(s.finished)advanceVictory(s,DT);
   stepActors(s);
+  advancePlasmaFields(s.fx,s.special,DT);
   advanceHitNumbers(s,DT);
 }
 function stepActors(s) {
@@ -252,8 +254,10 @@ function stepActors(s) {
       ball.frameTime+=DT;
       while(speed>0&&ball.frameTime>1/speed){ball.frameTime-=1/speed;ball.frame=(ball.frame+1)%frames.length}
     }
-    ball.trail.push([ball.x,ball.y]);
-    if(ball.trail.length>45)ball.trail.shift();
+    if(ball.actor.trailLength){
+      ball.trail.push([ball.x,ball.y]);
+      if(ball.trail.length>2*ball.actor.trailLength-1)ball.trail.shift();
+    }
     return true;
   });
   s.blasts=s.blasts.filter(blast=>{
