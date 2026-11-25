@@ -207,6 +207,7 @@ async function exercise(browser,touch){
     await tap(552,574);assert.equal(await page.locator("#power").getAttribute("aria-label"),"Adjust power, 21");
     await tap(770,590);assert(await page.locator("#no").isVisible());await click("#full");await tap(440,288);
     await click("#sound");assert.equal(await page.locator("#sound").getAttribute("aria-pressed"),"false");
+    await click("#sound");assert.equal(await page.locator("#sound").getAttribute("aria-pressed"),"true");
     await click("#newmatch");await status("Weapon shop · Player 1");
     const dealt=await page.locator('[id^="pick-"]').evaluateAll(buttons=>buttons.map(b=>b.getAttribute("aria-label").slice(6)));
     assert.equal(dealt.length,20);assert.equal(dealt[0],"Single Shot");
@@ -258,7 +259,8 @@ async function exercise(browser,touch){
     await page.locator("#yes").waitFor({state:"visible"});
     if(!(await page.locator("#status").textContent()).includes("Tie")){
       assert(await page.evaluate(()=>winGlyphHeights.size>1),"Winner lettering moved on the game canvas");
-      if(!mediaOnly)await page.waitForFunction(()=>played.some(f=>["bigpop.wav","cannonpop.wav","wooshpop.wav","pop.wav"].includes(f)));
+      await page.waitForFunction(requestsOnly=>(requestsOnly?window.mediaRequests:window.played)
+        .some(f=>["bigpop.wav","cannonpop.wav","wooshpop.wav","pop.wav"].includes(f)),mediaOnly);
     }
     await tap(320,253);await status("Weapon shop");await tap(402,423);await status("Player 1");
     await click("#practice");await status("Player 1");
