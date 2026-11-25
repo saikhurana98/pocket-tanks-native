@@ -220,7 +220,13 @@ async function exercise(browser,touch){
     const fired=[];
     // A shell can strike in a single 4 ms step. Record status transitions
     // before pressing Fire, including shells that land before the next poll.
-    await page.evaluate(()=>{
+    await page.evaluate(async()=>{
+      const {RangeDisplay}=await import("./presentation.mjs"),drawNumber=RangeDisplay.prototype.hitNumber;
+      window.sawHitNumber=false;
+      RangeDisplay.prototype.hitNumber=function(label){
+        drawNumber.call(this,label);
+        if(label.text==="60"&&this.ctx.canvas===document.querySelector("#board canvas"))window.sawHitNumber=true;
+      };
       new MutationObserver(records=>{
         for(const record of records)for(const node of record.addedNodes){
           if(node.textContent.startsWith("Shot in flight"))window.sawLaunch=true;
@@ -235,7 +241,10 @@ async function exercise(browser,touch){
       await tap(405,493);
       await page.waitForFunction(()=>window.sawLaunch);
       await status(n===19?"Game over":"Player "+(n%2===0?2:1));
-      if(n===0)assert.match(await page.locator("#status").textContent(),/Score 60 to 0$/);
+      if(n===0){
+        assert.match(await page.locator("#status").textContent(),/Score 60 to 0$/);
+        assert(await page.evaluate(()=>window.sawHitNumber),"60-point hit drawn on the live game board");
+      }
     }
     assert.deepEqual(fired.map(label=>label.slice(5)).sort(),dealt.sort());
     assert(await page.locator("#fire").isHidden());

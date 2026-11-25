@@ -1,4 +1,4 @@
-import {weapons,volleys,roll,prepareColliders,hitsTank,applyBlast,throwTank} from "./match.mjs";
+import {weapons,volleys,roll,prepareColliders,hitsTank,applyBlast,throwTank,advanceHitNumbers} from "./match.mjs";
 import {outsideContact,rebound} from "./contour.mjs";
 import {queueDirt,advanceDirt} from "./soil.mjs";
 import {advanceCutter,startCutter} from "./cutter.mjs";
@@ -25,6 +25,7 @@ export function setup(engine,scene,mode="practice") {
     seed,pending:[],tick:0,balls:[],blasts:[],markers:[],get ball(){return this.balls[0]},get impact(){return this.blasts[0]},
     mode,scores:[0,0],ammo:scene.tanks.map(()=>weapons.map(()=>2)),moves:mode==="match"?[4,4]:[99,99],
     dirtFalling:false,rockTime:.774,rockIndex:5,
+    hitNumbers:[],nextHitPhase:0,hitPhaseTime:0,
     fragments:[],fx:{seed:scene.fxSeed??seed,particles:[],emitters:[],ticks:0,clock:0,previous:DT},
     selected:[0,0],weapon:0,finished:false,airborne:[null,null],cutters:[],craters:[],dirt:new Map(),dirtAge:0,inVolley:false};
 }
@@ -188,6 +189,11 @@ function settleTank(s,pose,id){
   return moved;
 }
 export function step(s) {
+  if(s.pool)return;
+  stepActors(s);
+  advanceHitNumbers(s,DT);
+}
+function stepActors(s) {
   const e=s.engine;
   moveParticles(s.fx,DT);
   if(s.move){

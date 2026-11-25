@@ -3,6 +3,30 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || "playwright-core");
 const budget = require("./captures/shot-diff-budget.json");
 const impactTicks = require("./captures/presented-blast.json");
 const controls = require("./captures/control-regions.json");
+const hitGlyphs = require("./captures/hit-numbers.json").glyphs;
+
+async function verifyHitGlyphs(page) {
+  const actual=await page.evaluate(async strings=>{
+    const {RangeDisplay,loadArt}=await import("./presentation.mjs");
+    const range=await(await fetch("range.json")).json();
+    const canvas=document.createElement("canvas");canvas.width=160;canvas.height=16;
+    // Preserve transparency for comparison with the isolated original glyphs.
+    canvas.getContext("2d",{alpha:true,willReadFrequently:true});
+    const display=new RangeDisplay(canvas,await loadArt(),range);
+    const out={};
+    for(const text of strings){
+      display.ctx.clearRect(0,0,160,16);
+      const width=text.length*5+(text.startsWith("-")?1:0);
+      display.hitNumber({text,x:Math.floor(width/2),y:0,phase:0});
+      const pixels=display.ctx.getImageData(0,0,width,7);
+      const hash=await crypto.subtle.digest("SHA-256",pixels.data);
+      out[text]=Array.from(new Uint8Array(hash),n=>n.toString(16).padStart(2,"0")).join("");
+    }
+    return out;
+  },Object.keys(hitGlyphs));
+  assert.deepEqual(actual,hitGlyphs);
+  console.log("Floating hit glyphs: all ten digits, minus sign and spacing match the original");
+}
 
 async function verifyFilm(page) {
   const result = await page.evaluate(async () => {
@@ -110,7 +134,7 @@ async function verifyControls(page) {
   try{
     const page=await browser.newPage();
     await page.goto(process.argv[2]);await page.waitForFunction(()=>document.querySelector("#status").textContent.startsWith("Player"));
-    await verifyFilm(page);await verifySoil(page);await verifyControls(page);
+    await verifyFilm(page);await verifyHitGlyphs(page);await verifySoil(page);await verifyControls(page);
     // Start a fresh audio context so the draft monitor also observes sample decoding.
     await page.reload();await page.waitForFunction(()=>document.querySelector("#status").textContent.startsWith("Player"));
     await verifyDraft(page);

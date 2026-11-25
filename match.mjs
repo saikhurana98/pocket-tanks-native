@@ -58,6 +58,27 @@ const hull=[[4,-10],[11,-4],[11,-1],[3,2],[-3,2],[-11,-1],[-11,-4],[-5,-10]];
 const barrel=[[2,-12],[2,0],[-2,0],[-2,-12]];
 const rotation=angle=>offsets[(Math.trunc(angle)%360+360)%360];
 
+// The Windows hit label keeps its impact position as the tank moves away.
+// 0x441720 raises it by 40 px/s and rotates its horizontal offset by 180°/s.
+export function advanceHitNumbers(state,dt){
+  state.hitPhaseTime+=dt;
+  if(state.hitPhaseTime>.3){
+    state.hitPhaseTime-=.3;
+    state.nextHitPhase=Math.max(0,state.nextHitPhase-60);
+  }
+  for(let i=state.hitNumbers.length-1;i>=0;i--){
+    const label=state.hitNumbers[i];
+    label.y-=40*dt;
+    label.phase=(label.phase+180*dt)%360;
+    if(label.y < -20)state.hitNumbers.splice(i,1);
+  }
+}
+export function hitNumberLeft(label){
+  const center=Math.trunc(label.x+20*rotation(label.phase)[1]/1024);
+  const width=label.text.length*5+(label.text[0]==="-"?1:0);
+  return center-Math.floor(width/2);
+}
+
 // 0x474330 places the damage center using the integer sine and cosine tables.
 export function damageCenter([x,y,slope]){
   const [c,s]=rotation(Math.trunc(slope)-90);
@@ -105,6 +126,9 @@ export function applyBlast(state,hit,front=Math.min(hit.phase,hit.actor.radius-1
     if(points<=0)return;
     hit.struck[id]=true;
     state.scores[state.turn]=state.engine.scoreHit(state.scores[state.turn],points,id===state.turn);
+    state.hitNumbers.push({x:pose[0],y:pose[1]-15,phase:state.nextHitPhase%359,
+      text:String(id===state.turn?-points:points)});
+    state.nextHitPhase+=60;
     if(!weapon.knockback)return;
     // 0x44c637..0x44c715, normal throw with default intensity and no angle override.
     const dx=Math.trunc(pose[0])-Math.trunc(hit.x),dy=Math.trunc(pose[1])-Math.trunc(hit.y);

@@ -3,8 +3,8 @@ import {paintParticles} from "./particles.mjs";
 import {cutterStripes,rasterLine} from "./cutter.mjs";
 import sprites from "./art/animated-shells.json" with {type:"json"};
 import widths from "./art/arsenal.json" with {type:"json"};
-import {weapons,volleys} from "./match.mjs";
-const pngs=["tracer-labels","animated-shells","match","big-blast","shop","random","match-range","arsenal","three-blast","five-blast"];
+import {weapons,volleys,hitNumberLeft} from "./match.mjs";
+const pngs=["hit-numbers","tracer-labels","animated-shells","match","big-blast","shop","random","match-range","arsenal","three-blast","five-blast"];
 const sources = ["range","sky","aim","arrows","angle","power","bar","controls","blast","hulls","barrels","end","weapon","second",...pngs];
 export async function loadArt() {
   const images = await Promise.all(sources.map(async name => {
@@ -184,6 +184,15 @@ export class RangeDisplay {
     c.fillStyle="#000";c.fillRect(right?600:0,33,200,26);
     for(const d of digits){c.drawImage(this.art.match,d*32,0,widths[d],26,x,33,widths[d],26);x+=widths[d]}
   }
+  hitNumber(label){
+    let x=hitNumberLeft(label);
+    const y=Math.trunc(label.y);
+    for(const ch of label.text){
+      const width=ch==="-"?6:5,source=ch==="-"?50:Number(ch)*5;
+      this.ctx.drawImage(this.art["hit-numbers"],source,0,width,7,x,y,width,7);
+      x+=width;
+    }
+  }
   shop(s,ui){
     const c=this.ctx;c.drawImage(this.art.shop,0,0);
     const item=(w,x,y)=>{
@@ -248,6 +257,7 @@ export class RangeDisplay {
     for(const m of s.markers){
       this.tracer(m.actor.label,m.x,m.y);
     }
+    for(const label of s.hitNumbers)this.hitNumber(label);
     c.restore();
     const hot=busy?null:ui.pressed||ui.hover,btn=this.buttons[hot];
     if(btn){const [sx,sy]=btn.states[ui.pressed?1:0];c.drawImage(this.art.controls,sx,sy,btn.w,btn.h,btn.x,btn.y,btn.w,btn.h)}

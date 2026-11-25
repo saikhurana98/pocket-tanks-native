@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {gunzipSync} from "node:zlib";
 import {setup,launch,step} from "../sim.mjs";
-import {weapons} from "../match.mjs";
+import {weapons,applyBlast,damageCenter,hitNumberLeft} from "../match.mjs";
 
 const read=path=>readFileSync(new URL(path,import.meta.url));
 const {instance}=await WebAssembly.instantiate(read("../engine/single-shot.wasm"));
@@ -45,6 +45,8 @@ for(const [name,r] of Object.entries(fixtures)){
     assert.equal(h>>>0,hash,name+" crater tick "+i);
   }
   assert.deepEqual(originalHitTicks,r.hits.map(h=>[h.tick,h.index]),name+" hit timing");
+  assert.deepEqual(shot.hitNumbers.map(label=>Number(label.text)),
+    r.hits.map(h=>h.index===r.turn?-h.damage:h.damage),name+" signed hit labels");
   for(const h of r.hits){
     assert.equal(e.blastDamage(impact[1],impact[2],...h.center,h.phase,weapons[weapon].damage),h.damage,name+" damage");
   }
@@ -54,3 +56,26 @@ for(const [name,r] of Object.entries(fixtures)){
   assert.deepEqual(shot.scores,expected,name+" scoreboard");
   console.log(name,r.flight.length+" flight ticks,",r.blast.length+" blast ticks,",shot.scores);
 }
+
+const film=JSON.parse(read("./captures/hit-numbers.json"));
+const scene={tanks:[0,1].map(()=>[...film.tank,0,90,5]),turn:1,terrain:{runs:[800*450]}};
+const state=setup(e,scene);
+const [x,y]=damageCenter(state.tanks[0]);
+const hit={x,y,struck:[false,false],actor:{radius:22,damage:60,knockback:false}};
+applyBlast(state,hit,21);
+applyBlast(state,hit,21);
+assert.deepEqual(state.hitNumbers.map(label=>Number(label.text)),film.points);
+let tick=0;
+for(const [target,left,right,top] of film.frames){
+  while(tick<target){step(state);tick++}
+  if(top<=-20)continue;
+  assert.deepEqual(state.hitNumbers.map(hitNumberLeft),[left,right],"floating hit x at tick "+tick);
+  assert(state.hitNumbers.every(label=>Math.trunc(label.y)===top),"floating hit y at tick "+tick);
+}
+assert.equal(state.hitNumbers.length,0);
+assert.deepEqual(state.scores,[0,0]);
+hit.struck=[true,false];applyBlast(state,hit,21);
+assert.equal(state.hitNumbers[0].text,"-60");
+assert.equal(state.scores[1],0);
+assert.equal(state.hitNumbers[0].phase,0);
+console.log("Original paired hit paths, independent lifetime, repeated contact and zero-score self-hit");
