@@ -6,6 +6,12 @@ Two people can play ten volleys on the same device. Pick weapons in the shop, or
 
 [Read the frame and sound audit](PRESENTATION.md) or [step through Single Shot](https://saikhurana98.github.io/pocket-tanks-native/tests/frame-review.html).
 
+## Online matches
+
+On the home server, choose **LAN Game** or **Online match**, create a room, and share its six-character code with the other player. Each browser runs the native game locally. The server checks the draft, ammunition, movement allowance and turn order. Both browsers compare their terrain and match state after each command before the next player can act. Leaving the room or restarting the service ends that match. GitHub Pages hosts the single-device modes and the frame viewer.
+
+For local multiplayer, use Node 24, run `npm ci` and `npm start`, and open `http://127.0.0.1:8080` in two browsers. The [Proxmox agent prompt](deploy/PROXMOX-AGENT.md) covers LAN hosting, the private deployment runner and testing through the deployed URL.
+
 ## Base Deluxe coverage
 
 The Original and Deluxe packs in this installation contain 30 weapons each. All 60 are playable in Target Practice and the two-player weapon shop. The other 260 weapons in this installation come from expansion packs.

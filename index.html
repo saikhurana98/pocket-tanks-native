@@ -18,6 +18,8 @@
       </div>
     </div>
     <nav aria-label="Browser controls">
+      <span id="room-info" role="status"></span>
+      <button id="online" hidden disabled>Online match</button>
       <button id="newmatch">Two players</button>
       <button id="practice">Target Practice</button>
       <button id="full">Fullscreen</button>
@@ -25,6 +27,16 @@
       <button id="sound" aria-pressed="true">Sound on</button>
       <button id="reset">Reset range</button>
     </nav>
+    <dialog id="room-ui" aria-labelledby="room-title">
+      <h2 id="room-title">Online match</h2>
+      <button id="create-room">Create room</button>
+      <form id="join-room"><label for="room-code">Room code</label>
+        <input id="room-code" maxlength="6" minlength="6" pattern="[A-Za-z2-9]{6}" required autocapitalize="characters" autocomplete="off">
+        <button id="join-button">Join room</button>
+      </form>
+      <p id="room-message" role="status"></p>
+      <button id="close-room">Back</button>
+    </dialog>
     <span id="status" class="sr" role="status"></span>
   </main>
   <script type="module" src="./game.js"></script>

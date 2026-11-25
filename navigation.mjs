@@ -61,6 +61,7 @@ export class Navigation{
         const y=[90,140,190,240,290,390][i];
         this.button(label,[277,255,265,167,166,286][i],y,[246,289,270,467,468,227][i],44,()=>this.leaveLetters(i,()=>{
           if(i<=1){this.single=i===0;this.show("player1")}
+          else if(i===2&&this.actions.online){this.show("mode");this.actions.online()}
           else if(i===2)this.show("network");
           else if(i===3)this.actions.start("practice");
           else if(i===4)this.show("title");

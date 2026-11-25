@@ -1,0 +1,21 @@
+[Unit]
+Description=Pocket Tanks game and room server
+After=network.target
+
+[Service]
+User=pocket-tanks
+Group=pocket-tanks
+WorkingDirectory=/srv/pocket-tanks/current
+Environment=HOST=0.0.0.0
+Environment=PORT=8080
+EnvironmentFile=/srv/pocket-tanks/current/release.env
+ExecStart=/usr/bin/node server/serve.mjs
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

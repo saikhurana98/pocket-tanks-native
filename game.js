@@ -1,4 +1,5 @@
 import {Navigation,loadMenus,ink} from "./navigation.mjs";
+import {Online} from "./online.mjs";
 import {DT,loadEngine,setup,launch,moveTank,step} from "./sim.mjs";
 import {RangeDisplay,loadArt} from "./presentation.mjs";
 import {weapons,inventory,openShop,pickWeapon,advanceDraft,volleys} from "./match.mjs";
@@ -94,7 +95,7 @@ function sync(){
       if(stock>=0&&!button.hidden)button.style.top=(462+row*23)/6+"%";
     }
     else button.hidden=stock>=0||id==="yes"||id==="no";
-    button.disabled=!!s.autoDraft||!!busy()&&id!=="exit"||id.startsWith("move")&&!s.moves[s.turn];
+    button.disabled=online.active&&!online.allowed&&!["exit","yes","no"].includes(id)||!!s.autoDraft||!!busy()&&id!=="exit"||id.startsWith("move")&&!s.moves[s.turn];
   }
   for(const [id,x] of [["yes",s.finished?278:329],["no",s.finished?423:409]]){
     const b=$(id);b.style.left=x/8+"%";b.style.top=(s.finished?239:277)/6+"%";
@@ -106,17 +107,17 @@ function sync(){
   board.classList.toggle("adjust",ui.mode==="angle"||ui.mode==="power");
   main.classList.toggle("tools",ui.dialog||ui.ended);
 }
-function reset(mode=s?.mode||"practice"){
+function reset(mode=s?.mode||"practice",roomSeed){
   navigation?.hide();$("targets").hidden=false;
   stopHold();finishAdjust();gesture=null;lag=0;clock=undefined;
   const range=mode==="match"?matchScene:scene;
-  s=setup(engine,range,mode);
+  s=setup(engine,roomSeed===undefined?range:{...range,seed:roomSeed},mode);
   s.onSound=effect;
   s.onAimChange=(id,direction,power)=>{ui.angles[id]=wrap(360-direction);ui.powers[id]=power};
   display.bind(s);
   if(navigation){
-    s.catalog=navigation.available.filter(i=>!navigation.removed.includes(i));
-    display.players=navigation.players.map((p,i)=>({...p,ink:ink[p.color],custom:p.color!==i||p.name!=="Player "+(i+1)}));
+    if(roomSeed===undefined)s.catalog=navigation.available.filter(i=>!navigation.removed.includes(i));
+    display.players=roomSeed===undefined?navigation.players.map((p,i)=>({...p,ink:ink[p.color],custom:p.color!==i||p.name!=="Player "+(i+1)})):null;
     display.menuFont=navigation.font.bind(navigation);
   }
   if(mode==="match")openShop(s);
@@ -167,7 +168,29 @@ function slide(p){
   if(ui.mode==="power")ui.powers[s.turn]=clamp(adjust.power+dx/4,1,100);
   sync();
 }
+function applyRoomCommand(cmd){
+  const turn=s.turn;
+  if(cmd.kind==="fire"){
+    s.selected[turn]=cmd.weapon;ui.angles[turn]=cmd.angle;ui.powers[turn]=cmd.power;
+    launch(s,cmd.angle,cmd.power);
+  }else if(cmd.kind==="move"){moveTank(s,cmd.direction);effect("crick.wav")}
+  else if(cmd.kind==="random"){s.autoDraft=true;effect("crick.wav")}
+  else if(cmd.kind==="pick"){pickWeapon(s,cmd.slot);effect("crick.wav");if(!s.pool)ui.finalShop="pending"}
+  finishAdjust();stopHold();sync();
+}
+const online=new Online({start:seed=>reset("match",seed),apply:applyRoomCommand,sync,
+  exit:()=>{reset("practice");navigation.show("mode")}});
 function action(id,p){
+  if(online.active){
+    if(id==="exit"||s.finished&&(id==="no"||id==="yes")){
+      const again=s.finished&&id==="yes";online.leave();if(again)online.open();return;
+    }
+    if(!online.allowed)return;
+    if(id==="fire"){online.command({kind:"fire",weapon:s.selected[s.turn],angle:ui.angles[s.turn],power:ui.powers[s.turn]});return}
+    if(id==="moveleft"||id==="moveright"){online.command({kind:"move",direction:id==="moveleft"?-1:1});return}
+    if(id==="random"){online.command({kind:"random"});return}
+    if(id?.startsWith("pick-")){online.command({kind:"pick",slot:Number(id.slice(5))});return}
+  }
   if(ui.ended||ui.finalShop)return;
   if(s.pool){
     if(s.autoDraft)return;
@@ -233,7 +256,7 @@ board.addEventListener("pointermove",e=>{
   if(navigation?.page||!s||ui.ended||gesture&&e.pointerId!==gesture.pointer)return;
   const p=boardPoint(e);lastPoint=p;
   ui.pointer=e.pointerType==="mouse"?p:null;
-  if(gesture?.p&&!adjust&&!gesture.done&&["angle","power"].includes(gesture.id)&&e.pointerType==="touch"&&Math.abs(p.x-gesture.p.x)>2){
+  if((!online.active||online.allowed)&&gesture?.p&&!adjust&&!gesture.done&&["angle","power"].includes(gesture.id)&&e.pointerType==="touch"&&Math.abs(p.x-gesture.p.x)>2){
     beginAdjust(gesture.id,gesture.p);gesture.done=true;
   }
   if(adjust&&document.pointerLockElement===board){
@@ -307,6 +330,7 @@ document.addEventListener("pointerlockchange",()=>{
   else if(adjust?.locked){finishAdjust();sync()}
 });
 document.addEventListener("keydown",e=>{
+  if($("room-ui").open)return;
   if(e.key==="F7"||e.key==="F8"){e.preventDefault();if(!e.repeat)$(e.key==="F7"?"full":"size").click();return}
   if(e.key==="F5"||e.key==="F6"){e.preventDefault();if(!e.repeat)toggleOption(e.key==="F5"?"fx":"music");return}
   if(navigation?.page){if(e.key==="Escape"){e.preventDefault();navigation.back()}return}
@@ -335,6 +359,7 @@ function frame(t){
     if(s.finished&&s.victory?.age>=3&&$("yes").hidden)sync();
     display.draw(s,ui,t);
     if(ui.finalShop==="pending")ui.finalShop="shown";
+    if(online.active&&!s.autoDraft&&!ui.finalShop&&!busy())online.settled(s);
   }else if(ui.dialog)display.draw(s,ui,t);
   requestAnimationFrame(frame);
 }
@@ -353,7 +378,8 @@ try{
     const id="pick-"+i;labels[id]="Draft weapon";
     target(id,262+158*Math.floor(i/10),124+i%10*27,134,24);
   }
-  navigation=new Navigation($("menu"),display,menus,{start:reset,track:musicScene,effect,unlock:unlockAudio,toggle:toggleOption,optionLabel});
+  navigation=new Navigation($("menu"),display,menus,{start:reset,online:online.endpoint?()=>online.open():null,track:musicScene,effect,unlock:unlockAudio,toggle:toggleOption,optionLabel});
+  $("online").disabled=false;
   const mode=new URLSearchParams(location.search).get("mode");reset(mode==="match"?"match":"practice");
   if(mode!=="practice"&&mode!=="match")navigation.show("launch");
   requestAnimationFrame(frame);

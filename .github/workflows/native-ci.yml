@@ -1,0 +1,38 @@
+name: Native game CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  game:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Check the original PC captures and the room protocol
+        run: |
+          set -e
+          bash -n deploy/install-release.sh
+          for suite in shot match spread contour deluxe deluxe-actors; do node "tests/$suite.mjs"; done
+          npm run test:rooms
+      - run: npx --no-install playwright-core install --with-deps chromium
+      - name: Compare original frames and play an online match
+        run: |
+          set -eu
+          python3 -m http.server 8081 --bind 127.0.0.1 > /tmp/pt-static.log 2>&1 &
+          static=$!
+          npm start > /tmp/pt-rooms.log 2>&1 &
+          rooms=$!
+          trap 'kill "$static" "$rooms" 2>/dev/null || true' EXIT
+          curl -fsS --retry 10 --retry-connrefused http://127.0.0.1:8080/healthz
+          node deploy/smoke.mjs http://127.0.0.1:8080 local .
+          node tests/presentation-flow.cjs http://127.0.0.1:8081/
+          node tests/online-browser.cjs http://127.0.0.1:8080
