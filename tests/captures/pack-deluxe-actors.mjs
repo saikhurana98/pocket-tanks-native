@@ -14,8 +14,8 @@ function fixture(r){
   return {source:r.source,sha256:r.sha256,terrain:r.terrain,materialCells:r.materialCells,
     tanks:r.tanks,turn:r.turn,seed:r.seed,entry:r.events[0][1].toLowerCase(),angle:360-r.events[0][4],power:r.events[0][5]};
 }
-const shots=fs.readdirSync(root).filter(f=>/^base-pending-|^cruise-ref-/.test(f)).map(read)
-  .filter(r=>weapons.slice(39).some(w=>w.entry===r.events[0][1].toLowerCase())).map(r=>{
+const recordings=fs.readdirSync(root).filter(f=>/^base-pending-|^cruise-ref-/.test(f)).map(read);
+const shots=recordings.filter(r=>weapons.slice(39).some(w=>w.entry===r.events[0][1].toLowerCase())).map(r=>{
     const offset=r.frames[0][0];
     return {...fixture(r),flight:r.frames.map(q=>[q[0]-offset,...q.slice(7,11)]),
       blasts:r.bursts.map(q=>[q[0]-offset,q[2],q[3]]),track:r.cruise?.map(q=>q.slice(2,4))};
@@ -35,5 +35,10 @@ for(const dir of ["actor-lab","actor-replay","zap-hits"]){
     actors.push({...fixture(r),mask:r.terrainHash,rows:r.rows.map(q=>q.slice(0,q[1]===0x489290?6:4))});
   }
 }
-fs.writeFileSync(new URL("deluxe-actors.json.gz",import.meta.url),gzipSync(JSON.stringify({shots,actors}),{level:9}));
+// The old recorder saved occupancy alone. Keep the actual intervening shots
+// from Glue Bomb to Roller so the material on each occupied cell can be replayed.
+const sequence=recordings.filter(r=>r.source.startsWith("base-pending-"))
+  .map(r=>[Number(r.source.split("-")[2]),r]).filter(([n])=>n>=13&&n<=25)
+  .sort(([a],[b])=>a-b).map(([,r])=>fixture(r));
+fs.writeFileSync(new URL("deluxe-actors.json.gz",import.meta.url),gzipSync(JSON.stringify({shots,actors,sequence}),{level:9}));
 console.log(shots.length+" projectile traces, "+actors.length+" actor traces");

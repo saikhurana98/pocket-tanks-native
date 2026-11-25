@@ -18,7 +18,7 @@ The launcher leads through the title and mode menu. Two-player setup records eac
 
 ## What was ported
 
-The WebAssembly text in [engine/single-shot.wat](engine/single-shot.wat) identifies the corresponding addresses in the 32-bit Windows executable. It uses binary64 arithmetic, an 800 × 450 collision bitmap and the original 4 ms update interval. The projectile and muzzle routines use the original Windows runtime's sine and cosine polynomials and lookup table. The Wasm module also computes projectile angles with a fixed binary64 arctangent so guided trajectories are reproducible across browser engines. JavaScript handles input, scheduling, audio and Canvas rendering.
+The WebAssembly text in [engine/single-shot.wat](engine/single-shot.wat) identifies the corresponding addresses in the 32-bit Windows executable. It uses binary64 arithmetic, an 800 × 450 collision bitmap and the original 4 ms update interval. The projectile and muzzle routines use the original Windows runtime's sine and cosine polynomials and lookup table. The Wasm module also computes projectile angles with a fixed binary64 arctangent so guided trajectories are reproducible across browser engines. The same Wasm module advances fire and Superball movement, backtracks through surface contacts, and traces electrical beams through the collision bitmap. JavaScript dispatches weapon actors and handles input, scheduling, audio and Canvas rendering.
 
 | Original address | Behavior in the port |
 | --- | --- |
@@ -64,7 +64,7 @@ To regenerate the playable programs and their sound files from an installed copy
 
 ## Run locally
 
-Run `node tests/deluxe-actors.mjs` for 27 more PC shots and 19 secondary-actor traces. The suite compares 7,477 projectile updates, 2,533 ground positions, 10,996 actor positions, two electrical beam endpoints and 19 whole-field occupancy hashes. An older Roller capture places the blast one pixel lower than the native port. Repeating that shot in the original with the saved terrain mask matches the port. The older capture lacks surface-material flags. The suite reports that discrepancy separately. It also fires each weapon at five angle and power combinations and checks seven positions from the original victory lettering.
+Run `node tests/deluxe-actors.mjs` for 27 more PC shots and 19 secondary-actor traces. The suite compares 7,477 projectile updates, 2,533 ground positions, 10,996 actor positions, two electrical beam endpoints and 19 whole-field occupancy hashes. All 2,988 recorded blast centers and update ticks match. One Roller shot depends on glue from an earlier turn. The suite replays the original sequence starting at Glue Bomb, verifies the full occupancy bitmap before each subsequent shot, and checks that Roller detonates on the coated cell. A second PC run verifies its behavior on the same terrain without the coating. It also fires each weapon at five angle and power combinations and checks seven positions from the original victory lettering.
 
 The browser tests in `tests/navigation.cjs` and `tests/arsenal-browser.cjs` accept the game URL. They exercise the menus, weapon presets, shop and exit routes, render all 60 weapon programs, and decode the referenced sounds. Individual effects still need further frame and sound comparisons.
 

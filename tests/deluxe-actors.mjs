@@ -7,25 +7,34 @@ import {drawWinner} from "../victory.mjs";
 
 const file=name=>readFileSync(new URL(name,import.meta.url));
 const {instance}=await WebAssembly.instantiate(file("../engine/single-shot.wasm"));
-const {shots,actors}=JSON.parse(gunzipSync(file("./captures/deluxe-actors.json.gz")));
+const {shots,actors,sequence}=JSON.parse(gunzipSync(file("./captures/deluxe-actors.json.gz")));
 const engine=instance.exports;
+const surfaces=new Map();
 function fire(r){
   const s=setup(engine,r);
+  if(surfaces.has(r.source))s.solid.set(surfaces.get(r.source));
   s.selected[s.turn]=weapons.findIndex(w=>w.entry===r.entry);
   assert(launch(s,r.angle,r.power));
   return s;
 }
-let flight=0,blasts=0,track=0,actorRows=0,knownRollerDifference=0;
+let previous;
+for(const r of sequence){
+  if(previous){
+    const recorded=setup(engine,r).solid;
+    assert(Buffer.from(previous).map(v=>Number(!!v)).equals(Buffer.from(recorded)),r.source+" starting occupancy");
+    surfaces.set(r.source,previous);
+  }
+  const s=fire(r);
+  for(let tick=0;s.inVolley&&tick<20000;tick++)step(s);
+  assert(!s.inVolley);previous=s.solid.slice();
+}
+assert(surfaces.get("base-pending-25-Roller.json")[423*800+262]&32,"Glue Bomb coating survives to Roller");
+let flight=0,blasts=0,track=0,actorRows=0;
 for(const r of shots){
   const s=fire(r);let tick=0,b=0,h=0,g=0;
   s.onBlastStep=hit=>{
     const expected=r.blasts[h++];
-    // This historical shot hit one row lower in the PC game. Its repeat with
-    // the saved collision mask matches the port. Keep the discrepancy visible.
-    const delta=r.source==="base-pending-25-Roller.json"?expected[2]-hit.y:0;
-    if(delta)knownRollerDifference++;
-    assert(Math.abs(delta)<=1);
-    assert.deepEqual([tick,hit.x,hit.y+delta],expected,r.source+" blast "+h);
+    assert.deepEqual([tick,hit.x,hit.y],expected,r.source+" blast "+h);
   };
   while(s.inVolley&&tick<20000){
     const active=s.balls.slice();
@@ -61,7 +70,7 @@ for(const r of actors){
 }
 assert.equal(new Set(shots.map(r=>r.entry)).size,21);
 console.log(shots.length+" shots, "+flight+" exact projectile ticks, "+track+" exact ground positions, "+blasts+" blast updates");
-console.log(actors.length+" terrain hashes and "+actorRows+" original actor positions matched. Historical Roller blast frames one row apart: "+knownRollerDifference);
+console.log(actors.length+" terrain hashes and "+actorRows+" original actor positions matched, including consecutive shots from Glue Bomb through Roller");
 
 const scene=JSON.parse(file("../range.json"));
 assert.equal(weapons.length,60);
