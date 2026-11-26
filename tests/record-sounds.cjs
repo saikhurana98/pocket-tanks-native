@@ -1,6 +1,7 @@
 // Install inside a browser page before its first sound is loaded.
 module.exports = function recordSounds() {
   window.played = [];
+  window.decoded = [];
   window.mediaRequests = [];
   const context = window.AudioContext?.prototype;
   if (context && window.AudioBufferSourceNode) {
@@ -15,6 +16,7 @@ module.exports = function recordSounds() {
     context.decodeAudioData = async function(data) {
       const buffer = await decode.call(this,data);
       buffers.set(buffer,names.get(data));
+      window.decoded.push(names.get(data));
       return buffer;
     };
     const source = AudioBufferSourceNode.prototype, start = source.start;

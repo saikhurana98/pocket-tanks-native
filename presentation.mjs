@@ -6,6 +6,8 @@ import {cutterStripes,rasterLine} from "./cutter.mjs";
 import sprites from "./art/animated-shells.json" with {type:"json"};
 import widths from "./art/arsenal.json" with {type:"json"};
 import {weapons,volleys,hitNumberLeft} from "./match.mjs";
+import practiceRange from "./range.json" with {type:"json"};
+import directions from "./engine/tank-offsets.json" with {type:"json"};
 const pngs=["treb20","hit-numbers","tracer-labels","animated-shells","match","big-blast","shop","random","match-range","arsenal","three-blast","five-blast"];
 const sources = ["range","sky","aim","arrows","angle","power","bar","controls","blast","hulls","barrels","end","weapon","second",...pngs];
 export async function loadArt() {
@@ -28,6 +30,7 @@ export class RangeDisplay {
     this.cursors=art.cursors;
     this.blastFrames=new Map();
     this.colorTiles=new Map();
+    this.rotatedShells=new Map();
     this.cutterFrames=new WeakMap();
     const mask=document.createElement("canvas");
     mask.width=40;mask.height=153;
@@ -45,6 +48,7 @@ export class RangeDisplay {
     this.reset();
   }
   reset(scene=this.scene,mode="practice"){
+    this.rotatedShells.clear();
     this.scene=scene;this.match=mode==="match";
     this.g.drawImage(this.match?this.art["match-range"]:this.art.range,0,0);
     this.pixels=this.g.getImageData(0,0,800,450);
@@ -175,8 +179,8 @@ export class RangeDisplay {
   tank(pose,id,angle){
     const [x,y,slope]=pose,[ox,oy,os]=this.scene.tanks[id];
     if(x===ox&&y===oy&&slope===os){
-      if(!this.match){this.tile("aim",angle+id*23*16,16,52,40,x-26,y-31);return}
-      if(angle===(360-this.scene.tanks[id][3])%360){
+      if(!this.match&&slope===practiceRange.tanks[id][2]){this.tile("aim",angle+id*23*16,16,52,40,x-26,y-31);return}
+      if(this.match&&angle===(360-this.scene.tanks[id][3])%360){
         if(this.players&&this.players[id].color!==id){this.coloredTile("match-range",id*52,450,52,40,x-26,y-31,id);return}
         this.ctx.drawImage(this.art["match-range"],id*52,450,52,40,x-26,y-31,52,40);return;
       }
@@ -189,6 +193,39 @@ export class RangeDisplay {
     this.tile("barrels",angle>180?360-angle:angle,16,48,48,-24,-28);
     this.ctx.restore();
     this.tile("hulls",k+id*72,16,48,48,x-24,y-28);
+  }
+  rotatedShell(frame,ball){
+    // PC paletted blitter 0x417390 projects the source pixels in row order.
+    const heading=Math.trunc(Math.atan2(ball.vy,ball.vx)*180/Math.PI);
+    const angle=(630-heading)%360,key=frame+"@"+angle;
+    let image=this.rotatedShells.get(key);
+    if(!image){
+      const [sx,sy,w,h]=sprites[frame],hw=w>>1,hh=h>>1;
+      const corner=Math.trunc(Math.atan2(hh,hw)*180/3.1415927);
+      const radius=Math.hypot(hw,hh),pad=Math.ceil(radius)+4;
+      const [ox,oy]=directions[(angle-corner+360)%360];
+      const [dx,dy]=directions[angle], [rx,ry]=directions[(angle+270)%360];
+      const tile=document.createElement("canvas");
+      tile.width=w;tile.height=h;
+      const source=tile.getContext("2d");source.drawImage(this.art["animated-shells"],sx,sy,w,h,0,0,w,h);
+      const input=new Uint32Array(source.getImageData(0,0,w,h).data.buffer);
+      image=document.createElement("canvas");image.width=image.height=2*pad+1;
+      const ctx=image.getContext("2d"),data=ctx.createImageData(image.width,image.height),rgba=new Uint32Array(data.data.buffer);
+      for(let row=0;row<h;row++){
+        let x=pad+(-ox*radius+row*rx)/1024,y=pad+(oy*radius-row*ry)/1024;
+        for(let col=0;col<w;col++){
+          x+=dx/1024;y-=dy/1024;
+          const color=input[row*w+col];if(!(color>>>24))continue;
+          const py=Math.floor(y+.5),at=py*image.width+Math.floor(x+.5);
+          rgba[at]=color;
+          if(py!==Math.floor(y))rgba[at-image.width]=color;
+        }
+      }
+      ctx.putImageData(data,0,0);
+      if(this.rotatedShells.size>=512)this.rotatedShells.delete(this.rotatedShells.keys().next().value);
+      this.rotatedShells.set(key,image);
+    }
+    this.ctx.drawImage(image,Math.trunc(ball.x)-(image.width>>1),Math.trunc(ball.y)-(image.height>>1));
   }
   projectile(weapon,ball) {
     const positions=ball.trail;
@@ -289,6 +326,8 @@ export class RangeDisplay {
         c.save();c.strokeStyle=g;c.beginPath();c.moveTo(ball.x,ball.y);c.lineTo(ex,ey);c.stroke();c.restore();
       }
       if(animation&&!["TRANS","GAS","FOG"].includes(ball.actor.blend)){
+          const frame=animation.frames[ball.frame];
+          if(animation.rotate && frame.toLowerCase().endsWith(".bmp")){this.rotatedShell(frame,ball);continue}
         const [sx,sy,w,h]=sprites[animation.frames[ball.frame]];
         c.save();c.translate(Math.trunc(ball.x),Math.trunc(ball.y));
         if(animation.rotate)c.rotate(Math.atan2(ball.vy,ball.vx)+Math.PI/2);

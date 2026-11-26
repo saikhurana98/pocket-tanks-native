@@ -79,7 +79,11 @@ export function advanceTrigger(s,frame,dispatch){
     }
     if(!frame.scheduled){frame.elapsed+=step.delay;frame.scheduled=true}
     if(s.tick<frame.start+Math.ceil(frame.elapsed/4))return true;
-    for(const key of Object.keys(step))if(Object.hasOwn(frame.values,key))frame.values[key]=evaluate(s,frame,key,step[key]);
+    // 0x485c51..0x485d82 evaluates these registers in a fixed order.
+    // A random draw or register assignment can affect the next expression.
+    for(const key of ["ax","bx","xoffset","yoffset","xoffset2","yoffset2","angle","power"]){
+      if(step[key]!==undefined)frame.values[key]=evaluate(s,frame,key,step[key]);
+    }
     frame.scheduled=false;frame.pc++;
     dispatch(step,frame.values);
   }

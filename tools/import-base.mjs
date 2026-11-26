@@ -185,6 +185,7 @@ function compile(pack,name){
       for(const [key,field] of [["low","LOW_COLOR"],["high","HIGH_COLOR"],["color","COLOR"]])if(f[field])a[key]=f[field].split(/\s+/).map(Number);
       if(f.DRAW_COLOR)a.trail=rgb(+f.DRAW_COLOR);
       if(expansion){
+        if(f.DIRTFALL_FLAG==="FALSE")a.dirtFall=false;
         if(f.GRAVITY_FLAG==="FALSE")a.weightless=true;
         if(f.REPEAT_TRIGGER_FLAG==="TRUE"){a.repeat=visit(f.REPEAT_TRIGGER);a.repeatTime=+f.REPEAT_TRIGGER_TIME}
         if(f.TIMEOUT_TRIGGER)a.timeout=visit(f.TIMEOUT_TRIGGER);

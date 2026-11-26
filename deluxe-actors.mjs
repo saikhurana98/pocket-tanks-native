@@ -107,7 +107,8 @@ function grow(s,a,dt){
   }
   if(depth<limit&&(!wall||a.y-depth>15))return true;
   if(a.source)a.source.age=a.source.definition.seconds;
-  bounds(s,a);return false;
+  if(w.dirtFall!==false)bounds(s,a);
+  return false;
 }
 function cruise(s,a,dt,trigger){
   a.clock+=dt;

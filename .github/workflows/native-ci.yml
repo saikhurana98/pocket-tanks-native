@@ -21,7 +21,7 @@ jobs:
         run: |
           set -e
           bash -n deploy/install-release.sh
-          for suite in shot match spread contour deluxe deluxe-actors expansions; do node "tests/$suite.mjs"; done
+          for suite in shot match spread contour deluxe deluxe-actors expansions expansion-audit; do node "tests/$suite.mjs"; done
           npm run test:rooms
       - run: npx --no-install playwright-core install --with-deps chromium
       - name: Compare original frames and play an online match

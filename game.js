@@ -22,14 +22,29 @@ function musicScene(name){
   if(name&&unlocked&&sound&&musicEnabled&&!document.hidden)music.play().catch(()=>{});
 }
 const sounds=new Map(),mediaVoices=new Map();
+let preparedWeapon;
 function loadSound(file){
   if(!sounds.has(file)){
     sounds.set(file,fetch("./audio/"+file).then(r=>{
       if(!r.ok)throw Error(file);
       return r.arrayBuffer();
-    }).then(bytes=>context.decodeAudioData(bytes)).catch(()=>null));
+    }).then(bytes=>context.decodeAudioData(bytes)).catch(()=>{sounds.delete(file);return null}));
   }
   return sounds.get(file);
+}
+function prepareWeaponSounds(){
+  if(!context||!unlocked||!sound||!fxEnabled||!s||s.pool)return;
+  const weapon=weapons[s.selected[s.turn]];
+  if(weapon===preparedWeapon)return;
+  preparedWeapon=weapon;
+  const files=new Set();
+  for(const actor of Object.values(weapon.actors)){
+    for(const file of [actor.sound,actor.bounceSound,actor.dropSound])if(file)files.add(file);
+    if(actor.dirt||(["dirtball","dirtslinger","magicwall"].includes(actor.type)&&actor.dirtFall!==false))
+      for(let i=1;i<=6;i++)files.add("rocks_"+i+".wav");
+  }
+  for(const steps of Object.values(weapon.triggers))for(const step of steps)if(step.sound)files.add(step.sound);
+  for(const file of files)loadSound(file);
 }
 function unlockAudio(){
   if(!sound)return;
@@ -40,6 +55,7 @@ function unlockAudio(){
     loadSound("crick.wav");
     if(s?.pool)loadSound("pickweap.wav");
     context.resume().catch(()=>{});
+    prepareWeaponSounds();
   }
   musicScene(track);
 }
@@ -66,6 +82,7 @@ function finishAdjust(){
   if(document.pointerLockElement===board)document.exitPointerLock();
 }
 function sync(){
+  prepareWeaponSounds();
   let status=ui.ended?"Game ended":s.move?"Moving":s.ball||s.jumpSettling||s.cutters.length?"Shot in flight":s.inVolley?"Impact":"Player "+(s.turn+1)+" · Ready to fire";
   if(s.pool)status="Weapon shop · Player "+((s.draft[0].length+s.draft[1].length)%2+1)+" picks";
   else if(ui.finalShop)status="Weapon shop · Deal complete";

@@ -85,7 +85,9 @@ for(const trace of JSON.parse(gunzipSync(read("./captures/deluxe.json.gz")))){
       const expected=trace.paint?.[cut.depth];
       if(expected)assert.deepEqual(cutterStripes(cut),expected,trace.file+" cutter draw at depth "+cut.depth);
     }
-    for(const b of active)assert.deepEqual([tick,b.x,b.y,b.vx,b.vy],trace.frames[frame++],trace.file+" projectile at "+tick);
+    // JSON encodes both velocity zero signs as 0. Scripted child headings
+    // exercise the preserved sign separately in expansion-audit.mjs.
+    for(const b of active)assert.deepEqual([tick,b.x,b.y,b.vx+0,b.vy+0],trace.frames[frame++],trace.file+" projectile at "+tick);
   }
   if(trace.markers)assert.deepEqual(markers,trace.markers);
   if(trace.particles)assert.equal(particle,trace.particles.length);

@@ -201,8 +201,12 @@
     (local $scale f64) (local $sx f64) (local $sy f64) (local $remaining f64)
     (global.set $bottomContact (i32.const 0))
     ;; 0x4343f7..0x4344bc. The update stores each velocity before using it.
-    (global.set $vy (f64.add (f64.mul (global.get $gravity) (f64.mul (f64.const 5.4) (local.get $dt))) (global.get $vy)))
-    (global.set $vx (f64.add (f64.mul (f64.mul (local.get $wind) (f64.const 0.02)) (local.get $dt)) (global.get $vx)))
+    (if (f64.ne (global.get $gravity) (f64.const 0)) (then
+      (global.set $vy (f64.add (f64.mul (global.get $gravity) (f64.mul (f64.const 5.4) (local.get $dt))) (global.get $vy)))))
+    ;; Preserve the signed zero on stationary, non-colliding emitters.
+    ;; Their next trigger obtains its direction from both velocity sign bits.
+    (if (i32.eqz (global.get $hitAir)) (then
+      (global.set $vx (f64.add (f64.mul (f64.mul (local.get $wind) (f64.const 0.02)) (local.get $dt)) (global.get $vx)))))
     ;; 0x434451 applies the specified drag along the reverse velocity vector.
     (if (f64.ne (global.get $drag) (f64.const 0)) (then
       (local.set $sx (call $crtAtan (f64.neg (global.get $vy)) (f64.neg (global.get $vx))))

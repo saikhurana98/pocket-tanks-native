@@ -251,7 +251,11 @@ function stepActors(s) {
     if(e.dropping.value&&!ball.dropped){
       if(ball.actor.dropSound)s.onSound?.(ball.actor.dropSound);
       ball.dropped=true;
-      if(ball.actor.dropTrigger){queueTrigger(s,ball.actor.dropTrigger,e.x.value,e.y.value,e.impactAngle(),e.impactPower(),ball.registers);return false}
+      if(ball.actor.dropTrigger){
+        if(ball.emitter)ball.emitter.stopped=true;
+        queueTrigger(s,ball.actor.dropTrigger,e.x.value,e.y.value,e.impactAngle(),e.impactPower(),ball.registers);
+        return false;
+      }
     }
     ball.x=e.x.value;ball.y=e.y.value;ball.vx=e.vx.value;ball.vy=e.vy.value;
     if(ball.actor.repeat&&ball.age>=(ball.nextRepeat??ball.actor.repeatTime)){
@@ -259,6 +263,7 @@ function stepActors(s) {
       queueTrigger(s,ball.actor.repeat,ball.x,ball.y,e.impactAngle(),e.impactPower(),ball.registers);
     }
     if(ball.actor.velocityTrigger&&(ball.actor.vertical>0?ball.vy>ball.actor.vertical:ball.actor.vertical<0&&ball.vy<ball.actor.vertical)){
+      if(ball.emitter)ball.emitter.stopped=true;
       queueTrigger(s,ball.actor.velocityTrigger,ball.x,ball.y,e.impactAngle(),e.impactPower(),ball.registers);return false;
     }
     if(ball.emitter){ball.emitter.x=ball.x;ball.emitter.y=ball.y}
