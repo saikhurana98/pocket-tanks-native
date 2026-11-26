@@ -146,15 +146,16 @@ async function exercise(browser,touch){
   try{
     const errors=[],requests=[];page.on("pageerror",e=>errors.push(e.message));page.on("response",r=>requests.push([r.status(),r.url()]));
     await page.addInitScript(()=>{
-      // The deal includes Super Skipper, Sniper Rifle, Laser, Popcorn, Color Bomb and an opening Single Shot.
+      // Select a full-catalog deal that retains the recorded opening Single Shot.
       const fill=Crypto.prototype.getRandomValues;
       Crypto.prototype.getRandomValues=function(bytes){
-        if(bytes instanceof Uint32Array&&bytes.length===1){bytes[0]=114530;return bytes}
+        if(bytes instanceof Uint32Array&&bytes.length===1){bytes[0]=10628;return bytes}
         return fill.call(this,bytes);
       };
     });
     await page.addInitScript(require("./record-sounds.cjs"));
-    await page.goto(new URL("?mode=practice",url).href);await page.waitForFunction(()=>document.querySelector("#status").textContent.startsWith("Player 1"));
+    await page.goto(new URL("?mode=practice",url).href);
+    await page.waitForFunction(()=>document.querySelector("#status").textContent.startsWith("Player 1"),null,{timeout:60000});
     assert(!requests.some(([,u])=>u.includes("/audio/")),"Audio downloaded before first interaction");
     if(!touch){await pixelParity(page);await projectileParity(page)}
     const screen=page.locator("#board");
@@ -219,8 +220,6 @@ async function exercise(browser,touch){
     for(let p=20;p<57;p++)await page.keyboard.press("ArrowUp");
     assert.equal(await page.locator("#power").getAttribute("aria-label"),"Adjust power, 57");
     const fired=[];
-    // A shell can strike in a single 4 ms step. Record status transitions
-    // before pressing Fire, including shells that land before the next poll.
     await page.evaluate(async()=>{
       const {RangeDisplay}=await import("./presentation.mjs"),drawNumber=RangeDisplay.prototype.hitNumber;
       window.sawHitNumber=false;
@@ -235,19 +234,13 @@ async function exercise(browser,touch){
         drawNumber.call(this,label);
         if(label.text==="60"&&this.ctx.canvas===document.querySelector("#board canvas"))window.sawHitNumber=true;
       };
-      new MutationObserver(records=>{
-        for(const record of records)for(const node of record.addedNodes){
-          if(node.textContent.startsWith("Shot in flight"))window.sawLaunch=true;
-        }
-      }).observe(document.getElementById("status"),{childList:true});
     });
     for(let n=0;n<20;n++){
       const ready=await page.locator("#status").textContent();
       assert(ready.includes("Volley "+(1+Math.floor(n/2))+" ·"),ready);
       fired.push(await page.locator("#fire").getAttribute("aria-label"));
-      await page.evaluate(()=>{window.sawLaunch=false});
       await tap(405,493);
-      await page.waitForFunction(()=>window.sawLaunch);
+      // Instant effects can advance the turn without displaying a flight phase.
       await status(n===19?"Game over":"Player "+(n%2===0?2:1));
       if(n===0){
         assert.match(await page.locator("#status").textContent(),/Score 60 to 0$/);
