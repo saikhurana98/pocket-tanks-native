@@ -16,7 +16,7 @@ For local multiplayer, use Node 24, run `npm ci` and `npm start`, and open `http
 
 The native game loads all 30 packs from this PC installation. Original and Deluxe contribute 30 weapons each. The 28 expansions contribute another 260, for 320 distinct weapons. Target Practice, the weapon options, the local shop and the room-code shop use the same catalog. The Ambush file declares Carpet Bomb twice and the catalog includes it once. [Pack counts](engine/packs.json)
 
-The importer retains the original slots and resolves each expansion's linked triggers, actors and media. The expansion regression fires every weapon and checks a 20-slot deal against the original PC shop. Three recorded PC shots also check trigger positions, timing, launch vectors and final terrain. Frame-by-frame visual and audio parity across the entire expansion roster remains unverified.
+The importer retains the original slots and resolves each expansion's linked triggers, actors and media. The expansion regression checks a 20-slot deal against the original PC shop. The full expansion audit compared two shots per weapon on the live site, including every presented playfield frame, trigger sequences and sound-start ticks. Visual and audio differences remain. [Expansion audit and per-weapon results](EXPANSION-AUDIT.md)
 
 The two base packs contain the following weapons.
 
