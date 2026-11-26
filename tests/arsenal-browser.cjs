@@ -26,10 +26,10 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||"playwright-core");
         let tick=0,shape="";
         while(s.inVolley&&tick++<18000){
           step(s);const actors=[...s.balls,...s.special,...s.blasts].map(a=>a.actor.type).join();
-          if(tick%24===0||shape!==actors){
+          if(tick%(w.pack?125:24)===0||(!w.pack&&shape!==actors)||w.pack&&tick===1){
             display.draw(s,ui,tick*4);frames++;
             const ball=s.balls[0];
-            if(ball&&tick%24===0&&!s.blasts.length){
+            if(!w.pack&&ball&&tick%24===0&&!s.blasts.length){
               const {actor}=ball,x=Math.trunc(ball.x),y=Math.trunc(ball.y);
               const inSky=x>=8&&x<792&&y>=8&&y<442&&!s.solid[y*800+x];
               const clear=s.tanks.every(([tx,ty])=>Math.hypot(tx-x,ty-y)>46);
@@ -56,7 +56,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||"playwright-core");
       }finally{await ctx.close()}
       return {completed,frames,flightSamples,sounds:soundFiles.size};
     });
-    assert.equal(result.completed,60);assert.deepEqual(errors,[]);
+    assert.equal(result.completed,320);assert.deepEqual(errors,[]);
     assert(result.flightSamples>50);
     console.log("PASS",result.completed,"weapons,",result.frames,"rendered frames,",result.flightSamples,"airborne visibility checks,",result.sounds,"decoded sounds");
   }finally{await browser.close()}

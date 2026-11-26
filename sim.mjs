@@ -1,6 +1,7 @@
 import {beginActor,advanceActor} from "./deluxe-actors.mjs";
 import {advancePlasmaFields} from "./plasma.mjs";
 import {advanceVictory} from "./victory.mjs";
+import {advanceTrigger,triggerFrame} from "./pack-script.mjs";
 import {weapons,volleys,roll,prepareColliders,hitsTank,applyBlast,throwTank,advanceHitNumbers} from "./match.mjs";
 import {outsideContact,rebound} from "./contour.mjs";
 import {queueDirt,advanceDirt} from "./soil.mjs";
@@ -77,8 +78,14 @@ function applyExpression(s,previous,initial,expression){
   }
   return v;
 }
-function queueTrigger(s,name,x,y,angle,power){
+function queueTrigger(s,name,x,y,angle,power,registers){
+  if(!name)return;
+  s.onTrigger?.(name,x,y,angle,power);
   const program=weapons[s.weapon],base={xoffset:x,yoffset:y,angle,power},values={...base};
+  if(program.pack){
+    const frame=triggerFrame(program.triggers[name],x,y,angle,power,registers);
+    frame.start=s.tick;s.pending.push({frame});return;
+  }
   let elapsed=0;
   for(const command of program.triggers[name]){
     elapsed+=command.delay;
@@ -86,16 +93,33 @@ function queueTrigger(s,name,x,y,angle,power){
   }
 }
 function releaseDue(s){
-  s.pending=s.pending.filter(command=>{
-    if(command.tick>s.tick)return true;
-    const {actor,base,values,command:definition}=command,e=s.engine;
+  const waiting=[];
+  for(const command of s.pending){
+    if(command.frame){
+      const program=weapons[s.weapon];
+      const active=advanceTrigger(s,command.frame,(definition,values)=>{
+        if(definition.sound)s.onSound?.(definition.sound);
+        const actor=program.actors[definition.actor];
+        if(actor)spawn(s,actor,values);
+        else queueTrigger(s,definition.actor,values.xoffset,values.yoffset,values.angle,values.power,values);
+      });
+      if(active)waiting.push(command);continue;
+    }
+    if(command.tick>s.tick){waiting.push(command);continue}
+    const {actor,base,values,command:definition}=command;
     for(const key of Object.keys(base))values[key]=applyExpression(s,values[key],base[key],definition[key]);
-    const {xoffset:x,yoffset:y,angle,power}=values;
     if(definition.sound)s.onSound?.(definition.sound);
+    spawn(s,actor,values);
+  }
+  s.pending=waiting;
+}
+function spawn(s,actor,{xoffset:x,yoffset:y,xoffset2,yoffset2,angle,power,ax,bx}){
+    const e=s.engine;
     if(actor.sound)s.onSound?.(actor.sound);
     if(actor.type==="bullet"){
       e.launch(x,y,angle,power);
       const ball={actor,bounces:actor.bounces??0,frame:0,frameTime:0,age:0,fresh:true,x,y,vx:e.vx.value,vy:e.vy.value,trailClock:0,trail:[[x,y],[x,y]]};
+      ball.registers={ax,bx};
       if(actor.flightEmitter)ball.emitter=startEmitter(s.fx,{...actor.flightEmitter,seconds:Infinity},x,y);
       s.balls.push(ball);
     }else if(actor.type==="marker"){
@@ -109,13 +133,12 @@ function releaseDue(s){
       throwTank(s,s.turn,angle,power*.11+1.1,3);
       s.groundAge[s.turn]=DT;s.jumpSettling=true;
     }else if(actor.type!=="blast"){
-      s.special.push(beginActor(s,actor,x,y,angle,power));
+      const special=beginActor(s,actor,x,y,angle,power,xoffset2,yoffset2);
+      special.registers={ax,bx};s.special.push(special);
     }else{
       s.blasts.push({actor,x,y,phase:0,age:0,struck:[false,false]});
       if(actor.erase)addCrater(s,x,actor.radius);
     }
-    return false;
-  });
 }
 export function moveTank(s,direction) {
   if(s.inVolley||s.move||s.finished||s.pool||!s.moves[s.turn])return false;
@@ -198,7 +221,7 @@ export function step(s) {
   if(s.pool)return;
   if(s.finished)advanceVictory(s,DT);
   stepActors(s);
-  advancePlasmaFields(s.fx,s.special,DT);
+  advancePlasmaFields(s.fx,s.special,DT,s.balls);
   advanceHitNumbers(s,DT);
 }
 function stepActors(s) {
@@ -216,36 +239,48 @@ function stepActors(s) {
   s.tick++;
   s.balls=s.balls.filter(ball=>{
     e.x.value=ball.x;e.y.value=ball.y;e.vx.value=ball.vx;e.vy.value=ball.vy;
-    e.setFlightMode(ball.actor.gravity,Number(ball.actor.hitAir),Number(ball.fresh));
+    e.setFlightMode(ball.actor.gravity,ball.actor.passTerrain?2:Number(ball.actor.hitAir),Number(ball.fresh));
+    e.setDrag(ball.actor.drag??0);
     ball.fresh=false;
     const [targetX,targetY]=s.tanks[1-s.turn];
-    e.dropTarget(ball.actor.dropSound?targetX:-9999);
+    e.dropTarget(ball.actor.dropSound||ball.actor.drop?targetX:-9999);
     e.proximityTarget(targetX,targetY,ball.actor.distance??0);
     e.homing(ball.actor.homingRange??0,ball.actor.homingMagnitude??0);
     let event=e.step(DT,0);
     ball.age+=DT;
-    if(e.dropping.value&&!ball.dropped){s.onSound?.(ball.actor.dropSound);ball.dropped=true}
+    if(e.dropping.value&&!ball.dropped){
+      if(ball.actor.dropSound)s.onSound?.(ball.actor.dropSound);
+      ball.dropped=true;
+      if(ball.actor.dropTrigger){queueTrigger(s,ball.actor.dropTrigger,e.x.value,e.y.value,e.impactAngle(),e.impactPower(),ball.registers);return false}
+    }
     ball.x=e.x.value;ball.y=e.y.value;ball.vx=e.vx.value;ball.vy=e.vy.value;
+    if(ball.actor.repeat&&ball.age>=(ball.nextRepeat??ball.actor.repeatTime)){
+      ball.nextRepeat=(ball.nextRepeat??ball.actor.repeatTime)+Math.max(DT,ball.actor.repeatTime);
+      queueTrigger(s,ball.actor.repeat,ball.x,ball.y,e.impactAngle(),e.impactPower(),ball.registers);
+    }
+    if(ball.actor.velocityTrigger&&(ball.actor.vertical>0?ball.vy>ball.actor.vertical:ball.actor.vertical<0&&ball.vy<ball.actor.vertical)){
+      queueTrigger(s,ball.actor.velocityTrigger,ball.x,ball.y,e.impactAngle(),e.impactPower(),ball.registers);return false;
+    }
     if(ball.emitter){ball.emitter.x=ball.x;ball.emitter.y=ball.y}
-    if(e.approach.value)queueTrigger(s,ball.actor.onApproach,e.approachX.value,e.approachY.value,e.approachAngle.value,e.approachPower.value);
+    if(e.approach.value)queueTrigger(s,ball.actor.onApproach,e.approachX.value,e.approachY.value,e.approachAngle.value,e.approachPower.value,ball.registers);
     if(event===2){if(ball.emitter)ball.emitter.stopped=true;return false}
     if(event===1){
       const bottom=Boolean(e.bottomContact.value);
       const key=Math.trunc(ball.y)*W+Math.trunc(ball.x);
       const flags=bottom?0:s.solid[key];
       if(flags&32)ball.bounces=0;
-      const rubber=Boolean((flags&64)&&!(flags&32));
+      const rubber=Boolean((flags&64)&&!(flags&32)&&!ball.actor.passRubber);
       if(ball.bounces||rubber){
         event=rebound(s,ball,bottom,rubber)?1:0;
         if(!event&&!rubber&&ball.actor.bounceEmitter)startEmitter(s.fx,ball.actor.bounceEmitter,ball.x,ball.y);
-        if(!event&&ball.actor.onBounce)queueTrigger(s,ball.actor.onBounce,ball.x,ball.y,e.impactAngle(),e.impactPower());
+        if(!event&&ball.actor.onBounce)queueTrigger(s,ball.actor.onBounce,ball.x,ball.y,e.impactAngle(),e.impactPower(),ball.registers);
       }
       else if(ball.actor.outside&&!bottom)outsideContact(s,ball);
     }
-    const timer=ball.actor.onTimer&&ball.age>=ball.actor.time;
-    if(timer||event===1||hitsTank(s,ball.x,ball.y)){
+    const timer=ball.actor.time!==undefined&&ball.age>=ball.actor.time;
+    if(timer||event===1||!ball.actor.passTank&&hitsTank(s,ball.x,ball.y)){
       if(ball.emitter)ball.emitter.stopped=true;
-      queueTrigger(s,timer?ball.actor.onTimer:ball.actor.onImpact,ball.x,ball.y,e.impactAngle(),e.impactPower());
+      queueTrigger(s,timer?ball.actor.onTimer:ball.actor.onImpact,ball.x,ball.y,e.impactAngle(),e.impactPower(),ball.registers);
       return false;
     }
     if(e.approach.value){if(ball.emitter)ball.emitter.stopped=true;return false}
@@ -283,16 +318,20 @@ function stepActors(s) {
     if(!hit.age){
       e.setBlastRadius(hit.actor.radius);
       applyBlast(s,hit,hit.actor.radius);
-      startEmitter(s.fx,hit.actor.emitter,hit.x,hit.y);
+      if(hit.actor.emitter)startEmitter(s.fx,hit.actor.emitter,hit.x,hit.y);
     }
     hit.age+=DT;
     return hit.age<hit.actor.seconds;
   });
-  s.special=s.special.filter(a=>advanceActor(s,a,DT,(...args)=>queueTrigger(s,...args)));
+  const expansion=weapons[s.weapon].pack;
+  // 0x4538f8..0x453943. Expansion trigger scripts run after the shell,
+  // blast and soil lists, before ground cruisers and plasma actors.
+  if(expansion){advanceDirt(s,DT);releaseDue(s)}
+  s.special=s.special.filter(a=>advanceActor(s,a,DT,(...args)=>queueTrigger(s,...args,a.registers)));
   s.cutters=s.cutters.filter(cut=>advanceCutter(s,cut,DT));
-  releaseDue(s);
+  if(!expansion)releaseDue(s);
   if(s.fx.emitters.length)emitParticles(s,DT);
-  advanceDirt(s,DT);
+  if(!expansion)advanceDirt(s,DT);
   const airborne=s.airborne.map(Boolean);
   let moved=airborne.some(Boolean);
   if(moved)moveAirborne(s);

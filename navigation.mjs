@@ -1,11 +1,12 @@
 import widths from "./art/menu-font.json" with {type:"json"};
 import {weapons} from "./match.mjs";
+import packs from "./engine/packs.json" with {type:"json"};
 import {menuGroups,menuInk,glyphPosition,groupDuration,orbitSprites,drawCredits} from "./menu-motion.mjs";
 
 const colors=["Red","Orange","Yellow","Green","Cyan","Blue","Purple","Pink"];
 export const ink=["#ff0000","#ff9600","#ffff00","#00ff00","#00ffff","#5872ff","#af42ff","#ff38ff"];
 const menuImages=["launch","title","mode","setup","options","cpu","logo","orbit","font","credits","start0","start1","start2","depot0","depot1","depot2"];
-menuImages.push("preset-load","preset-save","preset-delete");
+menuImages.push("preset-load","preset-save","preset-delete","packs");
 export async function loadMenus(){
   return Object.fromEntries(await Promise.all(menuImages.map(async name=>{
     const img=new Image();img.src="./art/menu-"+name+".png";await img.decode();return [name,img];
@@ -48,6 +49,7 @@ export class Navigation{
     document.getElementById("status").textContent=page==="mode"?"Select game mode":page;
     const go=(...args)=>this.button(...args.slice(0,-1),()=>this.show(args.at(-1)));
     if(page==="launch"){
+      document.getElementById("status").textContent=packs.length+" weapon packs detected, "+weapons.length+" weapons found.";
       go("Start Game",547,500,180,50,"title");
       this.button("Visit Weapon Depot",75,500,272,50,()=>window.open("https://www.blitwise.com/pocket-tanks","_blank","noopener"));
       this.actions.track(null);
@@ -187,7 +189,11 @@ export class Navigation{
     if(p==="launch"){
       const label=this.hot==="Start Game"?"start":this.hot==="Visit Weapon Depot"?"depot":null;
       if(label)c.drawImage(this.art[label+(this.pressed===this.hot?"2":"1")],label==="start"?547:75,501);
-      c.fillStyle="#999";c.font="8px monospace";c.fillText(weapons.length+" weapons found",9,56);
+      const panel=this.art.packs;
+      c.drawImage(panel,0,0,121,27,0,0,121,27);
+      packs.forEach((pack,i)=>c.drawImage(panel,0,27+(pack.id-1)*9,121,9,0,27+i*9,121,9));
+      if(weapons.length===320)c.drawImage(panel,0,305,121,12,0,35+packs.length*9,121,12);
+      else{c.fillStyle="#999";c.font="8px monospace";c.fillText(weapons.length+" weapons found",9,43+packs.length*9)}
     }else if(p==="title"){
       const logo=this.logo;logo.clock+=dt;
       while(logo.clock>=.004){logo.clock-=.004;if(logo.bounces===3)continue;logo.vy+=800*.004;logo.y+=logo.vy*.004;

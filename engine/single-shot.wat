@@ -165,6 +165,8 @@
   ;; 0x4343ea selects down, up or disabled gravity. At 0x435800 the
   ;; underground projectile selects empty cells instead of occupied cells.
   (global $gravity (mut f64) (f64.const 1))
+  (global $drag (mut f64) (f64.const 0))
+  (func (export "setDrag") (param $value f64) (global.set $drag (local.get $value)))
   (global $hitAir (mut i32) (i32.const 0))
   (global $contactX (export "contactX") (mut f64) (f64.const 0))
   (global $contactY (export "contactY") (mut f64) (f64.const 0))
@@ -201,6 +203,12 @@
     ;; 0x4343f7..0x4344bc. The update stores each velocity before using it.
     (global.set $vy (f64.add (f64.mul (global.get $gravity) (f64.mul (f64.const 5.4) (local.get $dt))) (global.get $vy)))
     (global.set $vx (f64.add (f64.mul (f64.mul (local.get $wind) (f64.const 0.02)) (local.get $dt)) (global.get $vx)))
+    ;; 0x434451 applies the specified drag along the reverse velocity vector.
+    (if (f64.ne (global.get $drag) (f64.const 0)) (then
+      (local.set $sx (call $crtAtan (f64.neg (global.get $vy)) (f64.neg (global.get $vx))))
+      (local.set $scale (f64.mul (global.get $drag) (local.get $dt)))
+      (global.set $vx (f64.add (global.get $vx) (f64.mul (call $cos (local.get $sx)) (local.get $scale))))
+      (global.set $vy (f64.add (global.get $vy) (f64.mul (call $sin (local.get $sx)) (local.get $scale))))))
     (local.set $scale (f64.mul (local.get $dt) (f64.const 50)))
     (global.set $x (f64.add (f64.mul (local.get $scale) (global.get $vx)) (global.get $x)))
     (global.set $y (f64.add (f64.mul (local.get $scale) (global.get $vy)) (global.get $y)))
@@ -240,6 +248,7 @@
       (then (return (i32.const 2))))
     (if (f64.ge (global.get $y) (f64.const 450))
       (then (global.set $bottomContact (i32.const 1)) (global.set $y (f64.const 449)) (return (i32.const 1))))
+    (if (i32.eq (global.get $hitAir) (i32.const 2)) (then (return (i32.const 0))))
     (if (i32.eqz (call $contact)) (then (return (i32.const 0))))
     ;; 0x4351a3..0x43526e and 0x4354f9..0x435508, ordinary terrain.
     (local.set $sx (f64.div (global.get $vx) (f64.const 20)))
@@ -326,6 +335,7 @@
   (func (export "blastDamage") (param $cx f64) (param $cy f64)
     (param $tankX f64) (param $tankY f64) (param $front i32) (param $damage i32) (result i32)
     (local $dx f64) (local $dy f64) (local $distance i32) (local $outside i32)
+    (if (i32.le_s (global.get $radius) (i32.const 0)) (then (return (i32.const 0))))
     (local.set $dx (f64.sub (f64.trunc (local.get $cx)) (f64.trunc (local.get $tankX))))
     (local.set $dy (f64.sub (f64.trunc (local.get $cy)) (f64.trunc (local.get $tankY))))
     (local.set $distance (i32.trunc_f64_s (f64.sqrt (f64.add

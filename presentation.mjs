@@ -283,7 +283,12 @@ export class RangeDisplay {
       }
       if(ball.trail&&ball.actor.trail)this.projectile(ball.actor,ball);
       const animation=ball.actor.animation;
-      if(animation&&ball.actor.blend!=="TRANS"&&ball.actor.blend!=="GAS"){
+      if(ball.actor.type==="lightning"){
+        const [ex,ey]=ball.end,g=c.createLinearGradient(ball.x,ball.y,ex,ey);
+        g.addColorStop(0,"rgb("+ball.actor.from.join(",")+")");g.addColorStop(1,"rgb("+ball.actor.to.join(",")+")");
+        c.save();c.strokeStyle=g;c.beginPath();c.moveTo(ball.x,ball.y);c.lineTo(ex,ey);c.stroke();c.restore();
+      }
+      if(animation&&!["TRANS","GAS","FOG"].includes(ball.actor.blend)){
         const [sx,sy,w,h]=sprites[animation.frames[ball.frame]];
         c.save();c.translate(Math.trunc(ball.x),Math.trunc(ball.y));
         if(animation.rotate)c.rotate(Math.atan2(ball.vy,ball.vx)+Math.PI/2);

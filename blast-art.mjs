@@ -14,6 +14,8 @@ function outline(radius){
 // The original keeps separate drawing and clearing fronts at 0x44bf94 and
 // 0x44c373. Colors cycle between those fronts even after growth stops.
 export function blastColor(actor,phase,r){
+  if(!actor.colors.length)return -1;
+  if(actor.drawIn)r=actor.radius-2-r;
   if(r>=phase||r>=actor.radius-1)return -1;
   const cleared=Math.max(0,phase-actor.eraseDelay-1);
   if(actor.inward?(r>0&&r>=actor.radius-cleared):r<cleared)return -1;

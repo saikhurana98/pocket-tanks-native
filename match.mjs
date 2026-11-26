@@ -123,10 +123,10 @@ export function applyBlast(state,hit,front=Math.min(hit.phase,hit.actor.radius-1
     if(hit.struck[id])return;
     const [cx,cy]=damageCenter(pose);
     const points=state.engine.blastDamage(hit.x,hit.y,cx,cy,front,weapon.damage);
-    if(points<=0)return;
+    if(points<=0&&!(weapon.fixedThrow&&weapon.damage===0&&state.engine.blastDamage(hit.x,hit.y,cx,cy,front,100)>0))return;
     hit.struck[id]=true;
     state.scores[state.turn]=state.engine.scoreHit(state.scores[state.turn],points,id===state.turn);
-    state.hitNumbers.push({x:pose[0],y:pose[1]-15,phase:state.nextHitPhase%359,
+    if(points)state.hitNumbers.push({x:pose[0],y:pose[1]-15,phase:state.nextHitPhase%359,
       text:String(id===state.turn?-points:points)});
     state.nextHitPhase+=60;
       if(weapon.randomize){
@@ -138,7 +138,12 @@ export function applyBlast(state,hit,front=Math.min(hit.phase,hit.actor.radius-1
     // 0x44c637..0x44c715, normal throw with default intensity and no angle override.
     const dx=Math.trunc(pose[0])-Math.trunc(hit.x),dy=Math.trunc(pose[1])-Math.trunc(hit.y);
     const radians=Math.fround(Math.atan2(dy,dx)),degrees=Math.fround(radians*180/3.1415927);
-    const direction=315-Math.abs(degrees)*.5;
-    throwTank(state,id,direction,points*.038);
+    let direction=315-Math.abs(degrees)*.5;
+    if(weapon.throwAngle!==undefined){
+      const spread=weapon.throwSpread,bound=Math.trunc(spread)*1000;
+      direction=weapon.throwAngle-spread/2+(bound?roll(state,bound)/1000:0);
+    }
+    const impulse=weapon.fixedThrow?weapon.throwMagnitude:points*.038*(weapon.throwMagnitude||1);
+    throwTank(state,id,direction,impulse);
   });
 }

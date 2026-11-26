@@ -73,8 +73,9 @@ console.log(shots.length+" shots, "+flight+" exact projectile ticks, "+track+" e
 console.log(actors.length+" terrain hashes and "+actorRows+" original actor positions matched, including consecutive shots from Glue Bomb through Roller");
 
 const scene=JSON.parse(file("../range.json"));
-assert.equal(weapons.length,60);
-for(const [id,w] of weapons.entries()){
+const base=weapons.filter(w=>w.slot<60);
+assert.equal(base.length,60);
+for(const w of base){
   for(const [angle,power] of [[60,20],[83,65],[9,13],[33,95],[270,1]]){
     const s=fire({...scene,seed:123456,entry:w.entry,angle,power});
     let t=0;while(s.inVolley&&t++<18000)step(s);

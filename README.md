@@ -12,9 +12,13 @@ On the home server, choose **LAN Game** or **Online match**, create a room, and 
 
 For local multiplayer, use Node 24, run `npm ci` and `npm start`, and open `http://127.0.0.1:8080` in two browsers. The [Proxmox agent prompt](deploy/PROXMOX-AGENT.md) covers LAN hosting, the private deployment runner and testing through the deployed URL.
 
-## Base Deluxe coverage
+## Installed weapon packs
 
-The Original and Deluxe packs in this installation contain 30 weapons each. All 60 are playable in Target Practice and the two-player weapon shop. The other 260 weapons in this installation come from expansion packs.
+The native game loads all 30 packs from this PC installation. Original and Deluxe contribute 30 weapons each. The 28 expansions contribute another 260, for 320 distinct weapons. Target Practice, the weapon options, the local shop and the room-code shop use the same catalog. The Ambush file declares Carpet Bomb twice and the catalog includes it once. [Pack counts](engine/packs.json)
+
+The importer retains the original slots and resolves each expansion's linked triggers, actors and media. The expansion regression fires every weapon and checks a 20-slot deal against the original PC shop. Three recorded PC shots also check trigger positions, timing, launch vectors and final terrain. Frame-by-frame visual and audio parity across the entire expansion roster remains unverified.
+
+The two base packs contain the following weapons.
 
 Single Shot, Big Shot, 3 Shot, 5 Shot, Jackhammer, Heatseeker, Tracer, Pile Driver, Dirt Mover, Crazy Ivan, Spider, Sniper Rifle, Ground Hog, Worm, Homing Worm, Skipper, Chain Reaction, Pineapple, Firecracker, Homing Missile, Tommy Gun, Mountain Mover, Scatter Shot, Jump Jets, Laser Battery, Digger, Fission Bomb, Late Bloomer, Color Bomb, Potholes, Popcorn, Sprinkler, Well Digger, Super Tracer, Minigun, Laser, Super Skipper, Crater Maker, Flash Blast, Magic Wall, Dirt Slinger, Zapper, Napalm, Hail Storm, Dirtball, Cruiser, Mud Pie, Pin Cushion, Cannon Ball, Wacky Tank, Glue Bomb, Fire Bolt, Boomerang, Bouncy Dirt, Big Dirtball, Super Zapper, Cruball, Mega Cruiser, Roller, Heavy Roller.
 
@@ -66,13 +70,13 @@ Run `node tests/deluxe.mjs` for 101 additional volleys and the shop replay. The 
 
 Run `node tests/contour.mjs` for the ground paths of Cruiser, Boomerang, Mega Cruiser, Roller, Heavy Roller and Cruball. Starting with each captured impact position and heading, the contour routine reproduces 1,006 moves and 2,533 tick positions on the six recorded surfaces. These six weapons also run in the shop and in Target Practice.
 
-To regenerate the playable programs and their sound files from an installed copy, run `node tools/import-base.mjs "PATH_TO_POCKET_TANKS_DELUXE"`. The importer reads the two original base packs and the art palette. To rebuild the Deluxe test fixture from raw original captures, run `node tests/captures/pack-programs.mjs OUTPUT.json.gz TRACE.json [...]`. Raw shots include the terrain, tank poses, active player and initial random state when recorded.
+To regenerate the programs, pack counts and available sound files, run `node tools/import-base.mjs "PATH_TO_POCKET_TANKS_DELUXE"`. Then run `python tools/expansion-art.py "PATH_TO_POCKET_TANKS_DELUXE"` with Pillow installed to build the HUD and projectile atlases. The importer checks each pack header against its distinct weapon definitions. It reports missing references in the supplied files. To rebuild the Deluxe test fixture from raw original captures, run `node tests/captures/pack-programs.mjs OUTPUT.json.gz TRACE.json [...]`. Raw shots include the terrain, tank poses, active player and initial random state when recorded.
 
 ## Run locally
 
 Run `node tests/deluxe-actors.mjs` for 27 more PC shots and 19 secondary-actor traces. The suite compares 7,477 projectile updates, 2,533 ground positions, 10,996 actor positions, two electrical beam endpoints and 19 whole-field occupancy hashes. All 2,988 recorded blast centers and update ticks match. One Roller shot depends on glue from an earlier turn. The suite replays the original sequence starting at Glue Bomb, verifies the full occupancy bitmap before each subsequent shot, and checks that Roller detonates on the coated cell. A second PC run verifies its behavior on the same terrain without the coating. It also fires each weapon at five angle and power combinations and checks seven positions from the original victory lettering.
 
-The browser tests in `tests/navigation.cjs` and `tests/arsenal-browser.cjs` accept the game URL. They exercise the menus, weapon presets, shop and exit routes, render all 60 weapon programs, and decode the referenced sounds. Individual effects still need further frame and sound comparisons.
+The browser tests in `tests/navigation.cjs` and `tests/arsenal-browser.cjs` accept the game URL. They exercise the menus, weapon presets, shop and exit routes, render all 320 weapon programs, and decode the referenced sounds. Run `node tests/expansions.mjs` for the expansion simulation and PC comparisons.
 
 Serve this directory over HTTP, for example with `python -m http.server 8080`, and visit `http://localhost:8080`. The compiled module is included. To rebuild with WABT 1.0.39, run `wat2wasm engine/single-shot.wat -o engine/single-shot.wasm`.
 

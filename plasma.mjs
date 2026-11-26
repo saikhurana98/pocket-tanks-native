@@ -1,11 +1,10 @@
 import frames from "./art/plasma-frames.json" with {type:"json"};
 
 const width=800,height=450,pitch=width+2;
-const colors={TRANS:[255,170,0],GAS:[0,200,255]};
+const colors={TRANS:[255,170,0],GAS:[0,200,255],FOG:[255,255,255]};
 
-function stamp(fx,key,ball){
-  const animation=ball.actor.animation;
-  const [w,h,indices]=frames[animation.frames[ball.frame]];
+function stamp(fx,key,ball,animation,index){
+  const [w,h,indices]=frames[animation.frames[index]];
   const x=Math.trunc(ball.x)-Math.floor(w/2)-animation.offsetX;
   const y=Math.trunc(ball.y)-Math.floor(h/2)-animation.offsetY;
   if(x+w<=0||y+h<=0||x>=width||y>=height)return;
@@ -45,27 +44,31 @@ function diffuse(field,fire){
   }
 }
 
-export function advancePlasmaFields(fx,balls,dt){
+export function advancePlasmaFields(fx,balls,dt,projectiles=[]){
   fx.plasmaClock=(fx.plasmaClock??0)+dt;
   while(fx.plasmaClock>.01){
     fx.plasmaClock-=.01;
     for(const ball of balls){
       const key=ball.actor.blend;
       if(!Object.hasOwn(colors,key))continue;
-      stamp(fx,key,ball);
+      if(ball.actor.animation)stamp(fx,key,ball,ball.actor.animation,ball.frame);
+    }
+    for(const ball of projectiles){
+      const p=ball.actor.plasma;
+      if(p)stamp(fx,p.blend,ball,p,Math.floor(ball.age*p.speed)%p.frames.length);
     }
     if(!fx.plasma)continue;
     for(const [key,field] of Object.entries(fx.plasma)){
       diffuse(field,key==="TRANS");
       if(field.right<=field.left)delete fx.plasma[key];
     }
-    if(!fx.plasma.TRANS&&!fx.plasma.GAS)fx.plasma=null;
+    if(!Object.keys(fx.plasma).length)fx.plasma=null;
   }
 }
 
 export function paintPlasma(ctx,fx){
   if(!fx.plasma)return;
-  for(const key of ["TRANS","GAS"]){
+  for(const key of Object.keys(colors)){
     const field=fx.plasma[key];if(!field)continue;
     const {left,top,right,bottom,heat}=field,rgb=colors[key];
     const pixels=ctx.getImageData(left,top,right-left,bottom-top);
