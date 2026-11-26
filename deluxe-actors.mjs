@@ -159,7 +159,7 @@ function splat(s,a){
 function plasma(s,a,dt){
   const w=a.actor,fire=w.type==="fire"||w.type==="fog",scale=fire?50:20;
   if(!a.rest){
-    if(w.weightless){a.vy=0;a.x+=a.vx*dt*scale}
+    if(w.weightless){a.x+=a.vx*dt*scale;a.y+=a.vy*dt*scale}
     else [a.x,a.y,a.vy]=s.engine.advancePlasma(a.x,a.y,a.vx,a.vy,dt,scale);
     if(a.x<0||a.x>=800)return false;
     if(a.y>=449||cell(s,a.x,a.y)){

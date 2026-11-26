@@ -258,17 +258,12 @@ function stepActors(s) {
       }
     }
     ball.x=e.x.value;ball.y=e.y.value;ball.vx=e.vx.value;ball.vy=e.vy.value;
-    if(ball.actor.repeat&&ball.age>=(ball.nextRepeat??ball.actor.repeatTime)){
-      ball.nextRepeat=(ball.nextRepeat??ball.actor.repeatTime)+Math.max(DT,ball.actor.repeatTime);
-      queueTrigger(s,ball.actor.repeat,ball.x,ball.y,e.impactAngle(),e.impactPower(),ball.registers);
-    }
     if(ball.actor.velocityTrigger&&(ball.actor.vertical>0?ball.vy>ball.actor.vertical:ball.actor.vertical<0&&ball.vy<ball.actor.vertical)){
       if(ball.emitter)ball.emitter.stopped=true;
       queueTrigger(s,ball.actor.velocityTrigger,ball.x,ball.y,e.impactAngle(),e.impactPower(),ball.registers);return false;
     }
     if(ball.emitter){ball.emitter.x=ball.x;ball.emitter.y=ball.y}
     if(e.approach.value)queueTrigger(s,ball.actor.onApproach,e.approachX.value,e.approachY.value,e.approachAngle.value,e.approachPower.value,ball.registers);
-    if(event===2){if(ball.emitter)ball.emitter.stopped=true;return false}
     if(event===1){
       const bottom=Boolean(e.bottomContact.value);
       const key=Math.trunc(ball.y)*W+Math.trunc(ball.x);
@@ -282,10 +277,22 @@ function stepActors(s) {
       }
       else if(ball.actor.outside&&!bottom)outsideContact(s,ball);
     }
-    const timer=ball.actor.time!==undefined&&ball.age>=ball.actor.time;
-    if(timer||event===1||!ball.actor.passTank&&hitsTank(s,ball.x,ball.y)){
+    const contact=event===1||event!==2&&!ball.actor.passTank&&hitsTank(s,ball.x,ball.y);
+    if(contact)queueTrigger(s,ball.actor.onImpact,ball.x,ball.y,e.impactAngle(),e.impactPower(),ball.registers);
+    // 0x435ab8..0x436069 completes contact before servicing both clocks.
+    // A timer and an impact can dispatch two distinct programs on one tick.
+    if(ball.actor.time!==undefined)ball.timeLeft=(ball.timeLeft??ball.actor.time)-DT;
+    const timer=ball.timeLeft<=0;
+    if(timer)queueTrigger(s,ball.actor.onTimer,ball.x,ball.y,e.impactAngle(),e.impactPower(),ball.registers);
+    if(ball.actor.repeat){
+      ball.repeatLeft=(ball.repeatLeft??ball.actor.repeatTime)-DT;
+      while(ball.repeatLeft<=0){
+        queueTrigger(s,ball.actor.repeat,ball.x,ball.y,e.impactAngle(),e.impactPower(),ball.registers);
+        ball.repeatLeft+=Math.max(DT,ball.actor.repeatTime);
+      }
+    }
+    if(timer||contact||event===2){
       if(ball.emitter)ball.emitter.stopped=true;
-      queueTrigger(s,timer?ball.actor.onTimer:ball.actor.onImpact,ball.x,ball.y,e.impactAngle(),e.impactPower(),ball.registers);
       return false;
     }
     if(e.approach.value){if(ball.emitter)ball.emitter.stopped=true;return false}
