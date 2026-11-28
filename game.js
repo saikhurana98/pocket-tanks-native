@@ -3,6 +3,7 @@ import {Online} from "./online.mjs";
 import {DT,loadEngine,setup,launch,moveTank,step} from "./sim.mjs";
 import {RangeDisplay,loadArt} from "./presentation.mjs";
 import {weapons,inventory,openShop,pickWeapon,advanceDraft,volleys} from "./match.mjs";
+import {advanceComputer,computerPlayer,computerRoll,computerTurn} from "./computer.mjs";
 
 const $=id=>document.getElementById(id);
 const main=document.querySelector("main"),board=$("board");
@@ -83,17 +84,18 @@ function finishAdjust(){
 }
 function sync(){
   prepareWeaponSounds();
-  let status=ui.ended?"Game ended":s.move?"Moving":s.ball||s.jumpSettling||s.cutters.length?"Shot in flight":s.inVolley?"Impact":"Player "+(s.turn+1)+" · Ready to fire";
-  if(s.pool)status="Weapon shop · Player "+((s.draft[0].length+s.draft[1].length)%2+1)+" picks";
+  const player=id=>s.computer?display.players[id].name:"Player "+(id+1);
+  let status=ui.ended?"Game ended":s.move?"Moving":s.ball||s.jumpSettling||s.cutters.length?"Shot in flight":s.inVolley?"Impact":player(s.turn)+(computerTurn(s)?" · Aiming":" · Ready to fire");
+  if(s.pool)status="Weapon shop · "+player((s.draft[0].length+s.draft[1].length)%2)+" picks";
   else if(ui.finalShop)status="Weapon shop · Deal complete";
   else if(s.finished){
-    const [a,b]=s.scores;status="Game over · "+(a===b?"Tie":"Player "+(a>b?1:2)+" wins")+" · "+a+" to "+b;
+    const [a,b]=s.scores;status="Game over · "+(a===b?"Tie":player(a>b?0:1)+" wins")+" · "+a+" to "+b;
   }else if(s.mode==="match")status+=" · Volley "+Math.min(volleys,Math.floor((s.shots-(s.inVolley?1:0))/2)+1)+" · Score "+s.scores.join(" to ");
   if($("status").textContent!==status)$("status").textContent=status;
   $("angle").setAttribute("aria-label","Adjust aim, "+Math.round(ui.angles[s.turn])%360+" degrees");
   $("power").setAttribute("aria-label","Adjust power, "+Math.round(ui.powers[s.turn]));
   $("fire").setAttribute("aria-label","Fire "+weapons[s.selected[s.turn]].name);
-  $("board").setAttribute("aria-label",s.mode==="match"?"Pocket Tanks Deluxe two-player match":"Pocket Tanks Deluxe Target Practice");
+  $("board").setAttribute("aria-label","Pocket Tanks Deluxe "+(s.computer?"single-player match":s.mode==="match"?"two-player match":"Target Practice"));
   for(const button of $("targets").children){
     const id=button.id;
     const slot=id.startsWith("pick-")?Number(id.slice(5)):-1;
@@ -112,7 +114,8 @@ function sync(){
       if(stock>=0&&!button.hidden)button.style.top=(462+row*23)/6+"%";
     }
     else button.hidden=stock>=0||id==="yes"||id==="no";
-    button.disabled=online.active&&!online.allowed&&!["exit","yes","no"].includes(id)||!!s.autoDraft||!!busy()&&id!=="exit"||id.startsWith("move")&&!s.moves[s.turn];
+    const dialogControl=["exit","yes","no"].includes(id);
+    button.disabled=((online.active&&!online.allowed)||computerTurn(s)||!!busy())&&!dialogControl||!!s.autoDraft||id.startsWith("move")&&!s.moves[s.turn];
   }
   for(const [id,x] of [["yes",s.finished?278:329],["no",s.finished?423:409]]){
     const b=$(id);b.style.left=x/8+"%";b.style.top=(s.finished?239:277)/6+"%";
@@ -124,9 +127,11 @@ function sync(){
   board.classList.toggle("adjust",ui.mode==="angle"||ui.mode==="power");
   main.classList.toggle("tools",ui.dialog||ui.ended);
 }
-function reset(mode=s?.mode||"practice",roomSeed){
+function reset(mode=s?.computer?"solo":s?.mode||"practice",roomSeed){
   navigation?.hide();$("targets").hidden=false;
   stopHold();finishAdjust();gesture=null;lag=0;clock=undefined;
+  const solo=mode==="solo";
+  if(solo)mode="match";
   const range=mode==="match"?matchScene:scene;
   s=setup(engine,roomSeed===undefined?range:{...range,seed:roomSeed},mode);
   s.onSound=effect;
@@ -134,7 +139,16 @@ function reset(mode=s?.mode||"practice",roomSeed){
   display.bind(s);
   if(navigation){
     if(roomSeed===undefined)s.catalog=navigation.available.filter(i=>!navigation.removed.includes(i));
-    display.players=roomSeed===undefined?navigation.players.map((p,i)=>({...p,ink:ink[p.color],custom:p.color!==i||p.name!=="Player "+(i+1)})):null;
+    let players=navigation.players;
+    if(solo){
+      s.computer=computerPlayer(navigation.level??5,s.seed);
+      let color;
+      do{color=computerRoll(s.computer,ink.length)}while(color===players[0].color);
+      players=[players[0],{name:"CPU-"+s.computer.level,color}];
+    }else if(players[0].color===players[1].color){
+      players=[players[0],{...players[1],color:(players[0].color+1)%ink.length}];
+    }
+    display.players=roomSeed===undefined?players.map((p,i)=>({...p,ink:ink[p.color],custom:p.color!==i||p.name!=="Player "+(i+1)})):null;
     display.menuFont=navigation.font.bind(navigation);
   }
   if(mode==="match")openShop(s);
@@ -210,7 +224,7 @@ function action(id,p){
   }
   if(ui.ended||ui.finalShop)return;
   if(s.pool){
-    if(s.autoDraft)return;
+    if(s.autoDraft||computerTurn(s))return;
     if(id==="random"){s.autoDraft=true;effect("crick.wav")}
     else if(id?.startsWith("pick-")&&pickWeapon(s,Number(id.slice(5))))effect("crick.wav");
     if(!s.pool)ui.finalShop="pending";
@@ -219,7 +233,7 @@ function action(id,p){
   if(s.finished){
     if((s.victory?.age??0)<3)return;
     if(id==="yes"||id==="no")effect("crick.wav");
-    if(id==="yes")reset("match");
+    if(id==="yes")reset();
     if(id==="no")navigation.show("title");
     return;
   }
@@ -228,7 +242,7 @@ function action(id,p){
     effect("crick.wav");
     ui.dialog=false;ui.ended=true;finishAdjust();stopHold();sync();navigation.show("title");return;
   }
-  if(busy()||ui.dialog)return;
+  if(busy()||ui.dialog||computerTurn(s))return;
   const turn=s.turn;
   const choice=weaponButtons.indexOf(id);
   if(choice>=0){
@@ -260,6 +274,7 @@ board.addEventListener("pointerdown",e=>{
   if(navigation?.page||!s||e.button!==0||gesture)return;
   if(ui.ended){reset();return}
   unlockAudio();const p=boardPoint(e);lastPoint=p;ui.pointer=e.pointerType==="mouse"?p:null;let id=hit(p);
+  if(computerTurn(s)&&!["exit","yes","no"].includes(id))return;
   if(adjust){if(document.pointerLockElement!==board)slide(p);finishAdjust();effect("crick.wav");gesture={pointer:e.pointerId,commit:true};sync();return}
   board.setPointerCapture(e.pointerId);
   if(ui.mode==="move")id=p.x<s.tanks[s.turn][0]?"moveleft":"moveright";
@@ -273,7 +288,7 @@ board.addEventListener("pointermove",e=>{
   if(navigation?.page||!s||ui.ended||gesture&&e.pointerId!==gesture.pointer)return;
   const p=boardPoint(e);lastPoint=p;
   ui.pointer=e.pointerType==="mouse"?p:null;
-  if((!online.active||online.allowed)&&gesture?.p&&!adjust&&!gesture.done&&["angle","power"].includes(gesture.id)&&e.pointerType==="touch"&&Math.abs(p.x-gesture.p.x)>2){
+  if(!busy()&&!computerTurn(s)&&(!online.active||online.allowed)&&gesture?.p&&!adjust&&!gesture.done&&["angle","power"].includes(gesture.id)&&e.pointerType==="touch"&&Math.abs(p.x-gesture.p.x)>2){
     beginAdjust(gesture.id,gesture.p);gesture.done=true;
   }
   if(adjust&&document.pointerLockElement===board){
@@ -368,7 +383,11 @@ function frame(t){
   if(!ui.dialog&&!ui.ended){
     lag+=dt;while(lag>=DT){
       const ball=s.ball,active=s.inVolley,moving=s.move,turn=s.turn,score=s.scores[s.turn];
-      if(advanceDraft(s,DT)){if(!s.pool)ui.finalShop="pending";ui.turnTime=t;sync()}
+      const drafting=!!s.pool;
+      if(advanceDraft(s,DT)||(!ui.finalShop&&advanceComputer(s))){
+        if(drafting&&!s.pool)ui.finalShop="pending";
+        ui.turnTime=t;sync();
+      }
       step(s);
       if(turn!==s.turn||moving&&!s.move||active!==s.inVolley||ball&&!s.ball||score!==s.scores[turn]){ui.turnTime=t;sync()}
       lag-=DT;
@@ -398,6 +417,7 @@ try{
   navigation=new Navigation($("menu"),display,menus,{start:reset,online:online.endpoint?()=>online.open():null,track:musicScene,effect,unlock:unlockAudio,toggle:toggleOption,optionLabel});
   $("online").disabled=false;
   const mode=new URLSearchParams(location.search).get("mode");reset(mode==="match"?"match":"practice");
-  if(mode!=="practice"&&mode!=="match")navigation.show("launch");
+  if(mode==="solo"){navigation.single=true;navigation.show("player1")}
+  else if(mode!=="practice"&&mode!=="match")navigation.show("launch");
   requestAnimationFrame(frame);
 }catch(e){$("loading").textContent="Could not load Target Practice. Reload to try again.";console.error(e)}

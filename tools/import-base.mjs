@@ -217,7 +217,11 @@ function compile(pack,name){
     return key;
   }
   const source=Object.fromEntries(pack.blocks.get(name.toLowerCase()).fields);
-  return {name,slot:pack.start+pack.roster.indexOf(name),entry:visit(source.TRIGGER),actors,triggers,...(expansion?{pack:index(pack.file),icon:source.ICON.toLowerCase()}: {})};
+  const aim={weight:Number(source.WEIGHT)||0,dirtRemoval:Number(source.DIRT_REMOVAL_RATING)||0};
+  if(Number(source.LINE_OF_SIGHT))aim.direct=true;
+  if(Number(source.AIR_DIRT_COUNT))aim.crossings=Number(source.AIR_DIRT_COUNT);
+  return {name,slot:pack.start+pack.roster.indexOf(name),entry:visit(source.TRIGGER),actors,triggers,
+    aim,...(expansion?{pack:index(pack.file),icon:source.ICON.toLowerCase()}: {})};
 }
 const weapons=supported.map(name=>{
   try{return compile(packs.find(p=>p.roster.includes(name)),name)}catch(e){throw Error(name+": "+e.message,{cause:e})}

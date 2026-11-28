@@ -276,6 +276,10 @@ export class RangeDisplay {
     const c=this.ctx;c.drawImage(this.art.shop,0,0);
     this.players?.forEach((p,i)=>{
       if(!p.custom)return;
+      if(p.color!==i){
+        const left=i?626:21;
+        this.coloredTile("shop",left,112,153,291,left,112,i);
+      }
       const x=i?702:97;c.fillStyle="#000";c.fillRect(x-88,79,176,27);
       c.save();c.fillStyle=p.ink;c.font="bold 20px Trebuchet MS, sans-serif";c.textAlign="center";
       c.fillText(p.name.toUpperCase(),x,100,174);c.restore();

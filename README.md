@@ -1,10 +1,18 @@
 # Pocket Tanks Deluxe · Native web port
 
-[Open the game](https://saikhurana98.github.io/pocket-tanks-native/) · [Play a two-player match](https://saikhurana98.github.io/pocket-tanks-native/?mode=match) · [Play Target Practice](https://saikhurana98.github.io/pocket-tanks-native/?mode=practice)
+[Open the game](https://saikhurana98.github.io/pocket-tanks-native/) · [Play against the computer](https://saikhurana98.github.io/pocket-tanks-native/?mode=solo) · [Play a two-player match](https://saikhurana98.github.io/pocket-tanks-native/?mode=match) · [Play Target Practice](https://saikhurana98.github.io/pocket-tanks-native/?mode=practice)
 
-Two people can play ten volleys on the same device. Pick weapons in the shop, or use Random to deal the remaining choices. Each player has ten rounds and four moves. The shop uses the PC game's deal routine to fill twenty positions from the playable roster. A weapon can appear more than once. The score counts hits on the opponent, deducts self-hits and stops at zero. After the final volley, choose Play Again to draft a fresh arsenal. Target Practice has unlimited ammunition for each playable weapon. Each mode uses a different range captured from the Windows game.
+Two people can play ten volleys on the same device. Pick weapons in the shop, or use Random to deal the remaining choices. Each player has ten rounds and four moves. The shop uses the PC game's deal routine to fill twenty positions from the playable roster. A weapon can appear more than once. The score counts hits on the opponent, deducts self-hits and stops at zero. After the final volley, choose Play Again to draft a fresh arsenal. Target Practice has unlimited ammunition for each playable weapon. Practice and matches use separate ranges captured from the Windows game.
 
 [Read the frame and sound audit](PRESENTATION.md) or [step through Single Shot](https://saikhurana98.github.io/pocket-tanks-native/tests/frame-review.html).
+
+## Single player
+
+Choose **1 Player**, enter your name and color, then choose difficulty **1–10**. You pick first in the weapon shop. The computer drafts its own ten rounds, aims, moves when it cannot find a clear shot, and fires on its turn. Play Again keeps your opponent's level and deals a fresh shop.
+
+The CPU uses the PC shop's weapon weights, the Windows random-number routine, and the weapon pack's line-of-sight and terrain-crossing settings. The original aim search tries 400 trajectories. Difficulty determines which candidates can supply the firing angle and power, from the first 30 at level 1 to the first 237 at level 10. The browser spreads the search across simulation ticks. The CPU and the human fire through the same weapon engine.
+
+A level 5 reference capture records the original terrain, tank positions, random seed, 400 candidate angle/power pairs and Super Zapper release. The regression reproduces all 400 pairs and the final shot at HUD angle 98° and power 97. CPU movement, draft timing and the other nine levels have less original-game coverage. [PC capture](tests/captures/cpu-5.json)
 
 ## Online matches
 
@@ -22,7 +30,7 @@ The two base packs contain the following weapons.
 
 Single Shot, Big Shot, 3 Shot, 5 Shot, Jackhammer, Heatseeker, Tracer, Pile Driver, Dirt Mover, Crazy Ivan, Spider, Sniper Rifle, Ground Hog, Worm, Homing Worm, Skipper, Chain Reaction, Pineapple, Firecracker, Homing Missile, Tommy Gun, Mountain Mover, Scatter Shot, Jump Jets, Laser Battery, Digger, Fission Bomb, Late Bloomer, Color Bomb, Potholes, Popcorn, Sprinkler, Well Digger, Super Tracer, Minigun, Laser, Super Skipper, Crater Maker, Flash Blast, Magic Wall, Dirt Slinger, Zapper, Napalm, Hail Storm, Dirtball, Cruiser, Mud Pie, Pin Cushion, Cannon Ball, Wacky Tank, Glue Bomb, Fire Bolt, Boomerang, Bouncy Dirt, Big Dirtball, Super Zapper, Cruball, Mega Cruiser, Roller, Heavy Roller.
 
-Both modes use the same weapon programs. Delays, offsets, linked impact and proximity triggers, underground shells, seeded random spreads, heat seeking, terrain erosion and tracer labels come from the original pack definitions and executable routines. The browser runs the simulation and draws the scene locally.
+All modes use the same weapon programs. Delays, offsets, linked impact and proximity triggers, underground shells, seeded random spreads, heat seeking, terrain erosion and tracer labels come from the original pack definitions and executable routines. The browser runs the simulation and draws the scene locally.
 
 The launcher leads through the title and mode menu. Two-player setup records each tank’s name and color before drafting. Options can save named weapon selections in this browser. At the end of a match, the seven letters of Winner! move above the winning tank. Fireworks and their four explosion samples continue through the replay prompt, which opens after three simulation seconds.
 
@@ -52,7 +60,7 @@ The Windows game exposes F7 for display mode and F8 for LCD fullscreen. On the r
 
 Click either triangle for a one-unit adjustment. Click the Angle or Power heading, move horizontally, and click to commit. The original executable changes one unit per four logical pixels. A touch drag on either control also adjusts it. Escape opens the end-game prompt. The browser toolbar provides fullscreen, stretch, sound and reset.
 
-The visual regression replays the opening of the captured range and the first settled shot. With matching indicator and pointer poses, both complete RGBA frames match the original capture byte for byte. It also checks the color and shape of the blast in 29 original frames and 39 observed terrain positions traversed by a tank. The test hashes come from the original framebuffer and the original process's pose data. The two-player opening field is checked separately with the moving arrow masked, along with 33 original frames of the Big Shot blast. The timing of the moving arrow, the trail between captured ticks, moving-tank artwork on other slopes and settling on other terrains have less coverage. CPU and LAN play, configurable terrain and wind, and frame-level comparisons of every menu animation and weapon effect remain open. Both playable modes use captured terrain. Custom tank colors use the original sprite shading with a browser-side tint.
+The visual regression replays the opening of the captured range and the first settled shot. With matching indicator and pointer poses, both complete RGBA frames match the original capture byte for byte. It also checks the color and shape of the blast in 29 original frames and 39 observed terrain positions traversed by a tank. The test hashes come from the original framebuffer and the original process's pose data. The two-player opening field is checked separately with the moving arrow masked, along with 33 original frames of the Big Shot blast. The timing of the moving arrow, the trail between captured ticks, moving-tank artwork on other slopes and settling on other terrains have less coverage. Configurable terrain and wind, and frame-level comparisons of every menu animation and weapon effect remain open. Custom tank colors use the original sprite shading with a browser-side tint.
 
 ## Reference and replay
 

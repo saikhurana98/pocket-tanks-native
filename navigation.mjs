@@ -77,11 +77,14 @@ export class Navigation{
       input.oninput=()=>player.name=input.value;
       input.onfocus=()=>input.select();input.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();input.blur()}};
       colors.forEach((label,i)=>this.button(label,201+i*50,268,45,40,()=>{
-        if(this.players[1-id].color!==i){player.color=i;this.save()}
+        if(this.single||this.players[1-id].color!==i){player.color=i;this.save()}
       }));
       this.button("Continue",273,364,254,48,()=>this.leaveLetters(null,()=>{
         player.name=player.name.trim()||"Player "+(id+1);this.save();
-        if(!id)this.show(this.single?"cpu":"player2");else this.actions.start("match");
+        if(!id){
+          if(!this.single&&this.players[1].color===player.color)this.players[1].color=(player.color+1)%colors.length;
+          this.show(this.single?"cpu":"player2");
+        }else this.actions.start("match");
       }));
     }else if(page==="options"){
       const included=this.area("select","Available in game",40,117,161,216),removed=this.area("select","Removed list",255,117,161,216);
@@ -120,15 +123,18 @@ export class Navigation{
       this.button(action,250,336,101,21,submit);go("Cancel",450,336,101,21,"options");
     }else if(page==="cpu"){
       this.level??=5;
-      for(let i=1;i<=10;i++)this.button("Difficulty "+i,67+(i-1)*66,241,64,43,()=>this.level=i);
-      this.button("Continue",270,365,260,48,()=>this.show("computer"));
-    }else if(page==="network"||page==="computer"){
+      const buttons=Array.from({length:10},(_,i)=>this.button("Difficulty "+(i+1),67+i*66,241,64,43,()=>{
+        this.level=i+1;buttons.forEach((b,j)=>b.setAttribute("aria-pressed",String(i===j)));
+      }));
+      buttons.forEach((b,i)=>b.setAttribute("aria-pressed",String(this.level===i+1)));
+      this.button("Continue",270,365,260,48,()=>this.actions.start("solo"));
+    }else if(page==="network"){
       const box=this.area("div","Mode availability",207,153,386,140);
-      box.className="menu-dialog";box.textContent=page==="network"?"LAN play is unavailable in the native port.":"Computer play is unavailable in the native port.";
+      box.className="menu-dialog";box.textContent="LAN play is unavailable in the native port.";
       const back=this.button("Return to game modes",315,242,170,35,()=>this.show("mode"));back.className="visible-button";back.textContent="Return";
     }
   }
-  back(){const pages={launch:"launch",title:"launch",mode:"title",player1:"mode",player2:"player1",cpu:"player1",options:"mode",network:"mode",computer:"mode"};this.show(this.page.startsWith("preset-")?"options":pages[this.page])}
+  back(){const pages={launch:"launch",title:"launch",mode:"title",player1:"mode",player2:"player1",cpu:"player1",options:"mode",network:"mode"};this.show(this.page.startsWith("preset-")?"options":pages[this.page])}
   letterGroups(){
     const player=this.players[this.page==="player2"?1:0];
     const editing=document.activeElement===this.layer.querySelector("input");
@@ -185,7 +191,7 @@ export class Navigation{
     if(p.startsWith("preset-")){
       c.drawImage(this.art.options,0,0);c.drawImage(this.art[p],200,74);return;
     }
-    c.drawImage(this.art[({player1:"setup",player2:"setup",network:"mode",computer:"cpu"})[p]??p],0,0);
+    c.drawImage(this.art[({player1:"setup",player2:"setup",network:"mode"})[p]??p],0,0);
     if(p==="launch"){
       const label=this.hot==="Start Game"?"start":this.hot==="Visit Weapon Depot"?"depot":null;
       if(label)c.drawImage(this.art[label+(this.pressed===this.hot?"2":"1")],label==="start"?547:75,501);

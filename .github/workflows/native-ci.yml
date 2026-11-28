@@ -21,7 +21,7 @@ jobs:
         run: |
           set -e
           bash -n deploy/install-release.sh
-          for suite in shot match spread contour deluxe deluxe-actors expansions expansion-audit; do node "tests/$suite.mjs"; done
+          for suite in shot match computer spread contour deluxe deluxe-actors expansions expansion-audit; do node "tests/$suite.mjs"; done
           npm run test:rooms
       - run: npx --no-install playwright-core install --with-deps chromium
       - name: Compare original frames and play an online match
@@ -37,4 +37,5 @@ jobs:
           node tests/presentation-flow.cjs http://127.0.0.1:8081/
           node tests/arsenal-browser.cjs http://127.0.0.1:8080
           node tests/navigation.cjs http://127.0.0.1:8080
+          node tests/solo-browser.cjs http://127.0.0.1:8080
           node tests/online-browser.cjs http://127.0.0.1:8080
